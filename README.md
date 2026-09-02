@@ -94,13 +94,40 @@ The client has the same thing: `python jong_client.py update`.
 
 ---
 
+## The password
+
+One password for the whole library, and **no rules about what it may be**. Length limits
+and "must contain a symbol" mostly push people towards one bad password reused everywhere,
+and this library has one user who already knows what it is worth.
+
+What guards it instead is a limit on guessing: six wrong answers from an address and that
+address waits, for 30 seconds, then 2 minutes, 10, 30, an hour. A limit like that costs
+the person who knows the password nothing and makes even a very short one impractical to
+brute force. Each address is counted separately, so somebody else guessing badly cannot
+lock you out of your own library.
+
+The password is never stored. It goes through scrypt, which is deliberately slow and
+memory hungry, and only the result is kept, salted per library.
+
+**The first password.** A fresh library has none, and the server prints a one time setup
+code at startup. That code has to be presented to choose the first password, which is what
+stops the first stranger who finds a public J-ong from choosing it for you. The code stops
+existing the moment a password is set.
+
+Changing the password signs every device out. Settings has both buttons.
+
+To run with no door at all, which is what you want on a machine only you can reach, take
+`"auth"` out of `MODULES`.
+
+---
+
 ## Everything is a module
 
 Each feature is a file in `jong/modules/` listed in `jong/config.py`:
 
 ```python
 MODULES = [
-    "core", "songs", "versions", "artwork", "lyrics",
+    "core", "auth", "songs", "versions", "artwork", "lyrics",
     "albums", "sound", "youtube", "sync", "updater",
 ]
 ```
@@ -141,7 +168,7 @@ web/
   js/                  bundled in filename order
 client/
   jong_client.py       the desktop agent
-tests/                 71 tests, run with: python -m pytest tests -q
+tests/                 98 tests, run with: python -m pytest tests -q
 data/                  your library. Not in git.
 ```
 

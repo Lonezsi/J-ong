@@ -34,6 +34,19 @@ def main(argv=None):
         # than the config asked for is how you lose a feature without noticing.
         print("  FAILED    %s" % name)
         print("            " + detail.strip().splitlines()[-1])
+    if registry.has("auth"):
+        from jong.modules import auth
+        if auth.has_password():
+            print("  sign in    a password is set")
+        else:
+            # Printed rather than chosen here. The first password is the owner's to
+            # pick, and this code is what stops a stranger picking it first.
+            code = auth.setup_code()
+            print("\n  No password is set on this library yet.")
+            print("  Open %s/login and use this one time setup code:" % where)
+            print("\n      %s\n" % code)
+            print("  It stops working the moment a password is chosen.")
+
     print("\nCtrl-C to stop.")
 
     if args.open:

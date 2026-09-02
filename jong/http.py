@@ -42,6 +42,11 @@ CONTENT_TYPES = {
 
 CHUNK = 256 * 1024
 
+# Reachable without signing in: the door itself, the stylesheet it wears, and the calls
+# the door has to make. Everything else needs a session when the auth module is loaded.
+OPEN_PAGES = {"/login", "/jong.css", "/favicon.ico"}
+OPEN_API = {"/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/health"}
+
 
 def content_type_for(name):
     return CONTENT_TYPES.get(os.path.splitext(name)[1].lower(), "application/octet-stream")
@@ -195,10 +200,32 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         self._dispatch("DELETE")
 
+    def _locked_out(self, path):
+        """Is this request allowed through the door.
+
+        With the auth module switched off there is no door at all, which is what makes a
+        purely local install as simple as running the script.
+        """
+        if not registry.has("auth"):
+            return False
+        if path in OPEN_PAGES or path in OPEN_API:
+            return False
+        from .modules import auth
+        return not auth.signed_in(self.headers)
+
     def _dispatch(self, method):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         query = {k: v[-1] for k, v in urllib.parse.parse_qs(parsed.query).items()}
+
+        if self._locked_out(path):
+            if path.startswith("/api/"):
+                return self._json({"error": "Sign in to use this library."}, 401)
+            self.send_response(303)
+            self.send_header("Location", "/login")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
 
         if path.startswith("/api/"):
             return self._api(method, path, query)
@@ -211,6 +238,8 @@ class Handler(BaseHTTPRequestHandler):
         if not handler:
             return self._json({"error": "no such endpoint", "path": path}, 404)
         request = Request(method, path, query, self.headers, self.rfile, params)
+        # Used only to tell one guesser from another when rate limiting.
+        request.client = self.client_address[0] if self.client_address else "local"
         try:
             result = handler(request)
         except Error as e:
@@ -254,6 +283,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, bundle(os.path.join(config.WEB, "js"), ".js"),
                               CONTENT_TYPES[".js"], {"Cache-Control": "no-cache"})
 
+        if path == "/login":
+            return self._file(os.path.join(config.WEB, "login.html"))
         rel = "index.html" if path == "/" else path.lstrip("/")
         full = os.path.normpath(os.path.join(config.WEB, rel))
         if not full.startswith(config.WEB):

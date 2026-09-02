@@ -29,6 +29,12 @@ J.api = async function (path, options) {
       throw new Error(`The server sent something that is not JSON (${response.status}).`);
     }
   }
+  if (response.status === 401) {
+    // The session ran out or was signed out elsewhere. Going to the door is more use
+    // than an error message on a screen that can no longer load anything.
+    location.href = "/login";
+    throw new Error("Signed out.");
+  }
   if (!response.ok) {
     throw new Error(data.error || `${response.status} ${response.statusText}`);
   }

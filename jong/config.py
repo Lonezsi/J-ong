@@ -23,6 +23,9 @@ PORT = int(os.environ.get("JONG_PORT", "7900"))
 # Order matters only where one module's tables reference another's.
 MODULES = [
     "core",
+    # Take this out and the library has no door at all, which is what you want when it
+    # only ever listens on localhost.
+    "auth",
     "songs",
     "versions",
     "artwork",

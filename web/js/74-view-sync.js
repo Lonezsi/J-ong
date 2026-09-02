@@ -207,6 +207,18 @@ J.views.settings = {
         </div>
 
         <div class="section">
+          <div class="section-head"><h2>Password</h2></div>
+          <p class="faint" style="margin-top:0">
+            Any password is accepted, however short. Guessing is limited to a few tries
+            before that address has to wait, which is what makes a short one safe enough.
+          </p>
+          <div class="row wrap">
+            <button class="btn sm" data-act="change-password">Change password</button>
+            <button class="btn ghost sm" data-act="sign-out">Sign out</button>
+          </div>
+        </div>
+
+        <div class="section">
           <div class="section-head"><h2>Modules</h2></div>
           <p class="faint" style="margin-top:0">
             Each feature is a module. Removing one from the MODULES list in jong/config.py
@@ -235,6 +247,29 @@ J.views.settings = {
           J.applyAccent(saved.accent);
           J.emit("settings:changed");
         }
+      }
+
+      if (act.dataset.act === "sign-out") {
+        await J.try(() => J.post("/api/auth/logout"));
+        location.href = "/login";
+      }
+
+      if (act.dataset.act === "change-password") {
+        const values = await J.sheet({
+          title: "Change password",
+          sub: "Anything you like. Every signed in device is signed out when it changes.",
+          confirm: "Change it",
+          body: `<div class="sheet-fields">
+            <label class="sheet-label">Current password
+              <input class="field" name="current" type="password" autocomplete="current-password"></label>
+            <label class="sheet-label">New password
+              <input class="field" name="next" type="password" autocomplete="new-password"></label>
+          </div>`,
+        });
+        if (!values) return;
+        const done = await J.try(() => J.post("/api/auth/password", {
+          current: values.current, new: values.next }));
+        if (done) J.toast("Password changed. Other devices will have to sign in again.");
       }
 
       if (act.dataset.act === "check") {

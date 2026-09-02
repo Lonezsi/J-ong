@@ -30,9 +30,12 @@ def fresh_library(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", str(data / "jong.db"))
     monkeypatch.setattr(config, "SETTINGS_PATH", str(data / "settings.json"))
     db.close()
-    registry.load()
+    # The door is loaded only by the tests that are about the door. Every other test is
+    # about the library itself, and signing in first would say nothing about it.
+    registry.load([m for m in config.MODULES if m != "auth"])
     yield
     db.close()
+    registry.load([m for m in config.MODULES if m != "auth"])
 
 
 @pytest.fixture

@@ -33,6 +33,8 @@ def _js():
 def test_every_endpoint_the_page_calls_exists():
     """A renamed route shows up as a section of the page that is silently empty on a
     machine in another room. Only a test notices."""
+    # The whole app, including the door, since the page calls that too.
+    registry.load(config.MODULES)
     text = _js()
     called = set()
     # The path has to be captured through the ${id} in a template literal, not stopped
