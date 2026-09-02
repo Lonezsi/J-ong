@@ -89,10 +89,17 @@ def test_the_router_replaces_the_view_rather_than_emptying_it():
 
 
 def test_listeners_on_the_bus_let_go_when_their_panel_is_gone():
-    """A subscription outlives the DOM it draws, so it has to unhook itself."""
-    with open(os.path.join(JS_DIR, "64-panel-versions.js"), encoding="utf-8") as f:
-        panel = f.read()
-    assert "removeEventListener" in panel, "the versions panel subscribes forever"
+    """A subscription outlives the DOM it draws, so it has to unhook itself.
+
+    Every view that redraws on a player change has to do this, or each visit to a song
+    leaves another listener redrawing an element that is no longer on the page.
+    """
+    for name in ("60-view-song.js",):
+        with open(os.path.join(JS_DIR, name), encoding="utf-8") as f:
+            text = f.read()
+        if 'J.on("player:change"' not in text:
+            continue
+        assert "removeEventListener" in text, "%s subscribes to the bus forever" % name
 
 
 def test_the_eq_reads_the_response_without_touching_playback():
@@ -227,6 +234,48 @@ def test_everything_that_starts_hidden_can_actually_hide():
 
 
 # ── the silent CSS failures ──────────────────────────────────────────────────
+def _class_lists(text):
+    """The literal class names of each element, kept per element.
+
+    Two classes only fight over display when they are on the same element, so these stay
+    grouped rather than flattened. Flattening them compared every class in a file against
+    every other and reported four hundred imaginary clashes.
+
+    Class attributes here are template literals, so most of them carry a ${...} in the
+    middle. An earlier version of this matched class="([^"$]*)" and therefore skipped
+    every attribute containing one, which is nearly all of them: .sheet-tab went
+    undefined for a whole release and rendered as white default buttons. The expressions
+    are stripped and the literal names either side are kept.
+    """
+    elements = []
+    for raw in re.findall(r'class="([^"]*)"', text):
+        cleaned, depth, out = raw, 0, []
+        i = 0
+        while i < len(cleaned):
+            if cleaned.startswith("${", i):
+                depth += 1
+                i += 2
+                continue
+            if depth:
+                if cleaned[i] == "{":
+                    depth += 1
+                elif cleaned[i] == "}":
+                    depth -= 1
+                i += 1
+                continue
+            out.append(cleaned[i])
+            i += 1
+        names = [n for n in "".join(out).split() if n]
+        if names:
+            elements.append(names)
+    return elements
+
+
+def _class_names(text):
+    """Every literal class name in a file, flattened."""
+    return {name for element in _class_lists(text) for name in element}
+
+
 def _markup_sources():
     web = pathlib.Path(WEB)
     return list((web / "js").glob("*.js")) + [web / "index.html", web / "login.html"]
@@ -258,10 +307,9 @@ def test_no_class_in_the_markup_goes_unstyled():
     unstyled = {}
     for path in _markup_sources():
         text = path.read_text(encoding="utf-8")
-        for m in re.finditer(r'class="([^"$]*)"', text):
-            for name in m.group(1).split():
-                if name and name not in styled and name not in hooks:
-                    unstyled.setdefault(name, set()).add(path.name)
+        for name in _class_names(text):
+            if name and name not in styled and name not in hooks:
+                unstyled.setdefault(name, set()).add(path.name)
     assert not unstyled, "classes used but never styled: " + str(
         {k: sorted(v) for k, v in unstyled.items()})
 
@@ -291,8 +339,8 @@ def test_no_element_has_two_classes_fighting_over_display():
 
     clashes = []
     for path in _markup_sources():
-        for m in re.finditer(r'class="([^"$]*)"', path.read_text(encoding="utf-8")):
-            names = [n for n in m.group(1).split() if n in declares]
+        for element in _class_lists(path.read_text(encoding="utf-8")):
+            names = [n for n in element if n in declares]
             for i, a in enumerate(names):
                 for b in names[i + 1:]:
                     va, vb = declares[a][0], declares[b][0]

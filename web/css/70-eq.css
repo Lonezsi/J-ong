@@ -7,6 +7,24 @@
  */
 
 /* ── presets ──────────────────────────────────────────────────────────────── */
+/* A row where one is chosen. This lived in the lyrics stylesheet until that file was
+   rewritten around it, at which point the preset names became unstyled default buttons:
+   white squares on a dark panel. It belongs next to the thing that uses it. */
+.sheet-tabs { display: flex; align-items: center; gap: var(--s1); flex-wrap: wrap; }
+.sheet-tab {
+  background: none;
+  border: 0;
+  color: var(--text-3);
+  font-size: 13px; font-weight: 600;
+  padding: 4px var(--s3);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--fast), background var(--fast);
+}
+.sheet-tab:hover { color: var(--text); background: var(--hover); }
+.sheet-tab.on { color: var(--accent-hi); background: var(--accent-soft); }
+
 .preset-row { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
 .preset-tools {
   display: inline-flex; align-items: center; gap: 1px;

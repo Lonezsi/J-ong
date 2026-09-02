@@ -101,11 +101,11 @@ J.views.song = {
 
       ${has("lyrics") ? '<div class="block" id="lyricsBlock"></div>' : ""}
       ${has("sound") ? '<div class="block" id="soundBlock"></div>' : ""}
-      ${has("versions") ? '<div class="block" id="versionsBlock"></div>' : ""}
       ${has("artwork") ? '<div class="block" id="artworkBlock"></div>' : ""}
 
       <div class="block">
         <div class="block-head"><h2>Song</h2><span class="grow"></span>
+          ${has("versions") ? '<button class="btn ghost sm" data-act="upload">Upload a render</button>' : ""}
           <button class="btn ghost sm" data-act="albums">Albums</button>
           <button class="btn ghost sm danger" data-act="delete">Delete</button>
         </div>
@@ -121,7 +121,6 @@ J.views.song = {
 
     if (has("lyrics")) await J.blockLyrics(J.$("#lyricsBlock", root), ctx);
     if (has("sound")) await J.blockSound(J.$("#soundBlock", root), ctx);
-    if (has("versions")) await J.blockVersions(J.$("#versionsBlock", root), ctx);
     if (has("artwork")) await J.blockArtwork(J.$("#artworkBlock", root), ctx);
   },
 };
@@ -202,12 +201,20 @@ function openSlotMenu(anchor, slot, ctx, done) {
   menu.innerHTML = `
     <div class="menu-group">Renders</div>
     ${ctx.versions.map((v) => `
-      <button class="menu-row ${held.version && held.version.id === v.id ? "on" : ""}"
-              data-version="${v.id}">
+      <div class="menu-row ${held.version && held.version.id === v.id ? "on" : ""}"
+           data-version="${v.id}" role="button" tabindex="0">
         <span class="tagline">v${v.n}</span>
         <span class="grow truncate">${J.esc(J.versionSub(v))}</span>
         <span class="when">${v.duration ? J.time(v.duration) : ""}</span>
-      </button>`).join("")}
+        <button class="row-drop" data-drop="${v.id}" title="Delete this render"
+                aria-label="Delete v${v.n}">
+          <svg viewBox="0 0 24 24" width="12" height="12"><path d="M6 6l12 12M18 6L6 18"
+            stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+        </button>
+      </div>`).join("")}
+    <button class="menu-row add" data-upload>
+      <span class="tagline">+</span><span class="grow">Upload a render</span>
+    </button>
     ${ctx.presets.length ? `<div class="menu-group">Sound</div>
       ${ctx.presets.map((p) => `
         <button class="menu-row ${held.preset && held.preset.id === p.id ? "on" : ""}"
@@ -216,7 +223,8 @@ function openSlotMenu(anchor, slot, ctx, done) {
           <span class="grow truncate">${J.esc(p.name)}</span>
         </button>`).join("")}` : ""}`;
 
-  anchor.appendChild(menu);
+  document.body.appendChild(menu);
+  place(menu, anchor);
 
   const close = (event) => {
     if (event && menu.contains(event.target)) return;
@@ -226,6 +234,24 @@ function openSlotMenu(anchor, slot, ctx, done) {
   setTimeout(() => document.addEventListener("click", close), 0);
 
   menu.addEventListener("click", async (e) => {
+    const drop = e.target.closest("[data-drop]");
+    if (drop) {
+      e.stopPropagation();
+      const version = ctx.versions.find((v) => String(v.id) === drop.dataset.drop);
+      close();
+      const sure = await J.confirm(`Delete v${version.n}?`,
+        "The audio goes too, unless another version points at the same bytes.", "Delete it");
+      if (!sure) return;
+      await J.try(() => J.del(`/api/versions/${version.id}`), "Deleted");
+      J.emit("versions:changed", { songId: ctx.songId });
+      J.router.reload();
+      return;
+    }
+    if (e.target.closest("[data-upload]")) {
+      close();
+      J.$("#renderPick").click();
+      return;
+    }
     const row = e.target.closest("[data-version], [data-preset]");
     if (!row) return;
     if (!playing) {
@@ -247,6 +273,25 @@ function openSlotMenu(anchor, slot, ctx, done) {
     close();
     if (done) done();
   });
+}
+
+/* Put a menu under its chip and inside the window.
+ *
+ * Fixed rather than absolute, because the header clips its children to keep the blurred
+ * artwork tidy and that clipping was cutting the menu in half. */
+function place(menu, anchor) {
+  const rect = anchor.getBoundingClientRect();
+  const size = menu.getBoundingClientRect();
+  const gap = 6;
+  let top = rect.bottom + gap;
+  if (top + size.height > window.innerHeight - 8) {
+    // No room below: hang it above the chip instead of off the bottom of the screen.
+    top = Math.max(8, rect.top - size.height - gap);
+  }
+  const left = J.clamp(rect.left, 8, Math.max(8, window.innerWidth - size.width - 8));
+  menu.style.top = `${Math.round(top)}px`;
+  menu.style.left = `${Math.round(left)}px`;
+  menu.style.minWidth = `${Math.round(Math.max(rect.width, 240))}px`;
 }
 
 /* The title is the control. Click it, type, press Enter. */
@@ -346,6 +391,7 @@ function wireHero(root, ctx) {
   root.addEventListener("click", async (e) => {
     const act = e.target.closest("[data-act]");
     if (!act) return;
+    if (act.dataset.act === "upload") J.$("#renderPick", root).click();
     if (act.dataset.act === "albums") J.pickAlbums(ctx.song);
     if (act.dataset.act === "delete") {
       const sure = await J.confirm(

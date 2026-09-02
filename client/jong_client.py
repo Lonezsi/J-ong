@@ -236,6 +236,123 @@ def cmd_watch(cfg, server, args):
         time.sleep(minutes * 60)
 
 
+def send_one(cfg, server, path, yes=False):
+    """Put one file into the library, asking what it is a new render of."""
+    name = os.path.basename(path)
+    digest = digest_of(path)
+    answer = server.get("/api/versions/have?digest=" + digest)
+    held = (answer.get("have") or {}).get(digest)
+    if held:
+        print("  already here as v%s of %s" % (held["n"], held["title"]))
+        return True
+
+    guess = server.get("/api/songs/match?name=" + urllib.parse.quote(name))
+    suggest = guess.get("suggest")
+    song_id = None
+    if suggest:
+        if yes or ask("Is %s a new render of %s?" % (name, suggest["title"])):
+            song_id = suggest["song_id"]
+    if song_id is None:
+        title = os.path.splitext(name)[0]
+        if not (yes or cfg.get("auto_new_songs")):
+            if not ask("Add %s as a new song called %s?" % (name, title)):
+                print("  skipped")
+                return False
+        song_id = server.post("/api/songs", {"title": title})["song"]["id"]
+
+    print("  sending %s" % name)
+    result = server.upload("/api/songs/%d/versions" % song_id, path,
+                           {"X-Filename": name, "X-Source-Path": path})
+    version = result.get("version", {})
+    print("      %s as v%s" % ("already there" if result.get("duplicate") else "stored",
+                               version.get("n")))
+    return True
+
+
+def cmd_push_file(cfg, server, args):
+    """One file, straight from the right click menu."""
+    path = os.path.abspath(args.path)
+    if not os.path.isfile(path):
+        print("There is no file at %s" % path)
+        return 1
+    if os.path.splitext(path)[1].lower() not in AUDIO_EXT:
+        print("%s is not audio J-ong handles." % os.path.basename(path))
+        return 1
+    print("J-ong at %s" % cfg["server"])
+    return 0 if send_one(cfg, server, path, args.yes) else 1
+
+
+def cmd_render(cfg, server, args):
+    """Render an FL project, or every project in a folder, then send the audio in.
+
+    FL Studio's command line render is not headless. Its window opens, and on some
+    versions the export dialog waits to be started by hand. That is said out loud here
+    rather than discovered after a silent failure.
+    """
+    import flrender
+
+    path = os.path.abspath(args.path)
+    fl = flrender.find_fl(cfg.get("fl_path"))
+    if not fl:
+        print("FL Studio was not found. Set it once with:")
+        print(r'    jong_client.py flpath "C:\Program Files\Image-Line\FL Studio 2024\FL64.exe"')
+        return 1
+    print("Using %s" % fl)
+    print("FL will open while it renders. It is not a silent process, and on some")
+    print("versions the export dialog waits for Start to be pressed.")
+    print("")
+
+    say = lambda text: print("  " + text, flush=True)
+    fmt = cfg.get("render_format", "wav")
+    out = cfg.get("render_out") or None
+
+    if os.path.isdir(path):
+        done, failed = flrender.render_folder(path, out, fmt, fl, on_step=say)
+    elif os.path.isfile(path):
+        try:
+            done, failed = [flrender.render(path, out, fmt, fl, on_step=say)], []
+        except RuntimeError as e:
+            print("  %s" % e)
+            return 1
+    else:
+        print("There is nothing at %s" % path)
+        return 1
+
+    print("\n%d rendered." % len(done))
+    for audio in done:
+        send_one(cfg, server, audio, args.yes)
+    if failed:
+        print("\n%d did not render:" % len(failed))
+        for project, why in failed:
+            print("  %s" % os.path.basename(project))
+            print("      %s" % why)
+    return 0
+
+
+def cmd_flpath(cfg, server, args):
+    cfg["fl_path"] = args.path
+    save_config(cfg)
+    print("FL Studio set to %s" % args.path)
+    return 0
+
+
+def cmd_shell(cfg, server, args):
+    """The right click menu."""
+    import jong_shell
+    if os.name != "nt":
+        print("The right click menu is a Windows thing.")
+        return 0
+    if args.action == "remove":
+        jong_shell.remove()
+        print("Removed.")
+        return 0
+    written = jong_shell.install()
+    print("Added %d entries under HKEY_CURRENT_USER." % len(written))
+    for parent, label, _ in jong_shell.installed():
+        print("  %-46s %s" % (parent, label))
+    return 0
+
+
 def cmd_add(cfg, server, args):
     path = os.path.abspath(os.path.expanduser(args.path))
     if not os.path.isdir(path):
@@ -297,30 +414,66 @@ def cmd_update(cfg, server, args):
 
 
 def cmd_install(cfg, server, args):
-    """Run `watch` at logon. Windows uses a scheduled task; elsewhere this prints what
-    to add to your own startup, because guessing a Linux init system is worse than saying so."""
+    """Make J-ong part of the machine.
+
+    Three things, none of which needs an administrator:
+      the folder watcher runs at logon
+      the right click menu appears on audio, on .flp files and on folders
+      a daily task pulls a newer J-ong from GitHub
+
+    Everything lands under the current user: a per user scheduled task and HKCU registry
+    keys. Nothing is written to the machine wide hive, so removing it is complete.
+    """
     script = os.path.abspath(__file__)
+    quoted = '"%s" "%s"' % (sys.executable, script)
+
     if os.name != "nt":
-        print("On this system, add the following to your startup:\n")
-        print("  %s %s watch" % (sys.executable, script))
+        print("On this system, add the following to your startup:")
+        print("  %s watch" % quoted)
         return 0
-    name = "J-ong client"
-    command = '"%s" "%s" watch' % (sys.executable, script)
-    done = subprocess.run(
-        ["schtasks", "/Create", "/TN", name, "/TR", command, "/SC", "ONLOGON",
-         "/RL", "LIMITED", "/F"], capture_output=True, text=True)
-    if done.returncode != 0:
-        print("Could not create the scheduled task:\n%s" % (done.stderr or done.stdout).strip())
-        return 1
-    print("Installed. `%s` runs at logon." % name)
-    print("Remove it with:  schtasks /Delete /TN \"%s\" /F" % name)
+
+    def task(name, arguments, schedule):
+        done = subprocess.run(
+            ["schtasks", "/Create", "/TN", name, "/TR", "%s %s" % (quoted, arguments),
+             "/RL", "LIMITED", "/F"] + schedule,
+            capture_output=True, text=True)
+        if done.returncode != 0:
+            print("  could not create %s:" % name)
+            print("      " + (done.stderr or done.stdout).strip().splitlines()[-1][:160])
+            return False
+        print("  %s" % name)
+        return True
+
+    print("Scheduled tasks:")
+    task("J-ong watch", "watch", ["/SC", "ONLOGON"])
+    # Daily rather than at every start: an update that needs a restart should land at a
+    # predictable moment, not in the middle of a session.
+    task("J-ong update", "update", ["/SC", "DAILY", "/ST", "05:00"])
+
+    print("Right click menu:")
+    try:
+        import jong_shell
+        written = jong_shell.install()
+        for parent, label, _ in jong_shell.installed():
+            print("  %-44s %s" % (parent, label))
+        if not written:
+            print("  nothing added")
+    except Exception as e:
+        print("  could not add it: %s" % e)
+
+    print("")
+    print("Remove all of it with:")
+    print('  schtasks /Delete /TN "J-ong watch" /F')
+    print('  schtasks /Delete /TN "J-ong update" /F')
+    print("  %s shell remove" % quoted)
     return 0
 
 
 COMMANDS = {
     "scan": cmd_scan, "push": cmd_push, "watch": cmd_watch, "add": cmd_add,
     "folders": cmd_folders, "server": cmd_server, "update": cmd_update,
-    "install": cmd_install,
+    "install": cmd_install, "push-file": cmd_push_file, "render": cmd_render,
+    "shell": cmd_shell, "flpath": cmd_flpath,
 }
 
 
@@ -337,7 +490,18 @@ def main(argv=None):
     where = sub.add_parser("server", help="set the J-ong address")
     where.add_argument("url")
     sub.add_parser("update", help="pull a newer J-ong from GitHub")
-    sub.add_parser("install", help="run watch at logon")
+    sub.add_parser("install", help="run watch at logon, and add the right click menu")
+    one = sub.add_parser("push-file", help="send one file, used by the right click menu")
+    one.add_argument("path")
+    one.add_argument("-y", "--yes", action="store_true")
+    render = sub.add_parser("render", help="render an FL project, or a folder of them")
+    render.add_argument("path")
+    render.add_argument("-y", "--yes", action="store_true")
+    where_fl = sub.add_parser("flpath", help="tell it where FL Studio is")
+    where_fl.add_argument("path")
+    shell = sub.add_parser("shell", help="add or remove the right click menu")
+    shell.add_argument("action", nargs="?", default="install",
+                       choices=["install", "remove"])
     args = parser.parse_args(argv)
 
     if not args.command:
