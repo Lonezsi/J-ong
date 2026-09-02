@@ -115,11 +115,30 @@ async function boot() {
   await buildRail(state);
 
   // ── shell wiring ─────────────────────────────────────────────────────────
+  /* The rail can be put away at any width. On a wide screen its column collapses and
+   * the library takes the room; on a narrow one it slides off as an overlay. One class
+   * covers both, so the two buttons always do something rather than only doing something
+   * below a breakpoint. */
   const shell = J.$("#app");
-  J.$("#railOpen").addEventListener("click", () => shell.classList.add("rail-open-now"));
-  J.$("#railClose").addEventListener("click", () => shell.classList.remove("rail-open-now"));
-  J.$("#railScrim").addEventListener("click", () => shell.classList.remove("rail-open-now"));
-  window.addEventListener("hashchange", () => shell.classList.remove("rail-open-now"));
+  const RAIL_KEY = "jong.rail.shut";
+  const narrow = () => window.matchMedia("(max-width: 900px)").matches;
+
+  function setRail(shut) {
+    shell.classList.toggle("rail-shut", shut);
+    // Only a deliberate choice on a wide screen is worth remembering. On a phone the
+    // rail always starts out of the way.
+    if (!narrow()) localStorage.setItem(RAIL_KEY, shut ? "1" : "0");
+  }
+  setRail(narrow() ? true : localStorage.getItem(RAIL_KEY) === "1");
+
+  J.$("#railOpen").addEventListener("click", () => setRail(false));
+  J.$("#railClose").addEventListener("click", () => setRail(true));
+  J.$("#railScrim").addEventListener("click", () => setRail(true));
+  // Following a link on a phone should not leave the overlay sitting over the answer.
+  window.addEventListener("hashchange", () => { if (narrow()) setRail(true); });
+  window.matchMedia("(max-width: 900px)").addEventListener("change", (e) => {
+    setRail(e.matches ? true : localStorage.getItem(RAIL_KEY) === "1");
+  });
 
   J.$("#newSong").addEventListener("click", () => J.newSong());
 

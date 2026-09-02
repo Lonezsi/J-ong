@@ -38,7 +38,13 @@
   background: var(--accent);
   vertical-align: 3px;
 }
-.rail-close { display: none; }
+/* The rail buttons carry .icon-btn too, and .icon-btn sets display: grid from a later
+   file. Two single class rules tie on specificity and file order decides, which is how
+   both of these ended up permanently visible on desktop doing nothing. Two classes in the
+   selector settles it wherever the files happen to sit. */
+.icon-btn.rail-close { display: grid; }   /* always: it is how you put the rail away */
+.icon-btn.rail-open { display: none; }
+.shell.rail-shut .icon-btn.rail-open { display: grid; }
 
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a {
@@ -83,6 +89,11 @@
 
 .rail-scrim { display: none; }
 
+/* Collapsing the rail on a wide screen: the column goes to nothing and the main panel
+   takes the room. This is what the hamburger does when there is no overlay to open. */
+.shell.rail-shut { grid-template-columns: 0 1fr; }
+.shell.rail-shut .rail { display: none; }
+
 /* ── main ─────────────────────────────────────────────────────────────────── */
 .main {
   grid-area: main;
@@ -103,7 +114,6 @@
   position: sticky; top: 0; z-index: 5;
   background: linear-gradient(var(--surface) 70%, transparent);
 }
-.rail-open { display: none; }
 
 .search {
   display: flex; align-items: center; gap: var(--s2);
@@ -152,14 +162,17 @@
   .rail {
     position: fixed; inset: var(--s2) auto var(--s2) var(--s2);
     width: var(--rail-w); z-index: 40;
-    transform: translateX(calc(-100% - var(--s3)));
     transition: transform var(--med);
     box-shadow: var(--shadow-3);
   }
-  .shell.rail-open-now .rail { transform: none; }
-  .shell.rail-open-now .rail-scrim {
+  /* Narrow: shut means parked off screen rather than gone, so it can slide back. */
+  .shell.rail-shut .rail {
+    display: flex;
+    transform: translateX(calc(-100% - var(--s3)));
+  }
+  .rail-scrim {
     display: block; position: fixed; inset: 0; z-index: 30;
     background: rgba(0, 0, 0, 0.5);
   }
-  .rail-close, .rail-open { display: grid; }
+  .shell.rail-shut .rail-scrim { display: none; }
 }

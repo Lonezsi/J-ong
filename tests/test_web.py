@@ -6,6 +6,8 @@ never links.
 """
 import os
 import re
+import pathlib
+import urllib.error
 
 import pytest
 
@@ -207,3 +209,100 @@ def test_everything_that_starts_hidden_can_actually_hide():
         assert element_class in page, "%s is no longer in the shell" % element_class
     # The guard has to be present, since two of those three are given a display.
     assert "[hidden]" in css
+
+
+# ── the silent CSS failures ──────────────────────────────────────────────────
+def _markup_sources():
+    web = pathlib.Path(WEB)
+    return list((web / "js").glob("*.js")) + [web / "index.html", web / "login.html"]
+
+
+def _styled_classes():
+    """Every class any stylesheet defines, including the login page's own block."""
+    css = "\n".join(open(os.path.join(CSS_DIR, n), encoding="utf-8").read()
+                    for n in sorted(os.listdir(CSS_DIR)) if n.endswith(".css"))
+    login = open(os.path.join(WEB, "login.html"), encoding="utf-8").read()
+    inline = re.search(r"<style>(.*?)</style>", login, re.S)
+    if inline:
+        css += "\n" + inline.group(1)
+    return set(re.findall(r"\.([a-zA-Z][\w-]*)", css))
+
+
+def test_no_class_in_the_markup_goes_unstyled():
+    """An element given a class nothing defines is drawn by the browser's own rules.
+
+    The rail's New song button carried .chip, which existed in no stylesheet, so it
+    rendered as a default button: a white box on a dark panel, unreadable.
+    """
+    styled = _styled_classes()
+    # Hooks the scripts query or toggle but never paint.
+    hooks = {"now", "total", "sheet-body", "on", "off", "chosen", "playing", "current",
+             "settled", "hot", "dragging", "scrubbing", "paused", "is-cover", "bad",
+             "slide-left", "slide-right", "rail-shut", "grow", "wrap", "sm", "lg",
+             "primary", "ghost", "danger", "quiet", "accent", "warn", "right", "spec"}
+    unstyled = {}
+    for path in _markup_sources():
+        text = path.read_text(encoding="utf-8")
+        for m in re.finditer(r'class="([^"$]*)"', text):
+            for name in m.group(1).split():
+                if name and name not in styled and name not in hooks:
+                    unstyled.setdefault(name, set()).add(path.name)
+    assert not unstyled, "classes used but never styled: " + str(
+        {k: sorted(v) for k, v in unstyled.items()})
+
+
+def test_no_element_has_two_classes_fighting_over_display():
+    """Two single class rules setting display tie on specificity, so whichever file the
+    bundler reaches last wins.
+
+    .rail-close is `icon-btn rail-close`. .icon-btn sets display: grid in 30-controls.css
+    and .rail-close set display: none in 20-shell.css, so the button was permanently
+    visible on desktop, where nothing was wired to it. The fix is a two class selector,
+    which does not care about file order.
+    """
+    files = sorted(n for n in os.listdir(CSS_DIR) if n.endswith(".css"))
+    declares = {}
+    for order, name in enumerate(files):
+        text = open(os.path.join(CSS_DIR, name), encoding="utf-8").read()
+        for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", text):
+            body = m.group(2)
+            value = re.search(r"display:\s*([\w-]+)", body)
+            if not value:
+                continue
+            for part in m.group(1).strip().split("\n")[-1].split(","):
+                part = part.strip()
+                if re.fullmatch(r"\.[\w-]+", part):
+                    declares.setdefault(part[1:], []).append((order, name, value.group(1)))
+
+    clashes = []
+    for path in _markup_sources():
+        for m in re.finditer(r'class="([^"$]*)"', path.read_text(encoding="utf-8")):
+            names = [n for n in m.group(1).split() if n in declares]
+            for i, a in enumerate(names):
+                for b in names[i + 1:]:
+                    va, vb = declares[a][0], declares[b][0]
+                    if va[2] != vb[2]:
+                        clashes.append("%s(%s in %s) vs %s(%s in %s)"
+                                       % (a, va[2], va[1], b, vb[2], vb[1]))
+    assert not clashes, "file order decides whether these show: " + "; ".join(sorted(set(clashes)))
+
+
+def test_a_page_revalidates_instead_of_being_held_for_a_day(server):
+    """index.html went out with max-age=86400, so a fix landed on disk and the browser
+    kept serving yesterday's markup for a day. That is how a corrected button stayed
+    broken on screen long after it was fixed."""
+    import urllib.request
+    for path in ("/login", "/jong.css"):
+        with urllib.request.urlopen(server.base + path, timeout=10) as response:
+            cache = response.headers.get("Cache-Control", "")
+            etag = response.headers.get("ETag")
+        assert "max-age" not in cache, "%s is cached for a fixed time: %s" % (path, cache)
+        assert etag, "%s has no ETag, so no-cache means a full refetch every time" % path
+
+        request = urllib.request.Request(server.base + path,
+                                         headers={"If-None-Match": etag})
+        try:
+            with urllib.request.urlopen(request, timeout=10) as again:
+                assert False, "%s did not answer 304 to a matching tag" % path
+        except urllib.error.HTTPError as e:
+            assert e.code == 304, "%s answered %d to a matching tag" % (path, e.code)

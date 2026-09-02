@@ -10,6 +10,7 @@ import io
 import os
 import json
 import time
+import hashlib
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -119,6 +120,22 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD" and body:
             self.wfile.write(body)
 
+    def _etag_hit(self, etag):
+        """Answer 304 when the caller already holds exactly this body.
+
+        Revalidation rather than a long max-age. A document cached for a day means an
+        update lands on disk and the browser keeps showing yesterday's page, which is a
+        very confusing way to ship a fix.
+        """
+        if self.headers.get("If-None-Match") != etag:
+            return False
+        self.send_response(304)
+        self.send_header("ETag", etag)
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return True
+
     def _json(self, data, status=200):
         body = json.dumps(data, default=str).encode("utf-8")
         self._send(status, body, "application/json", {"Cache-Control": "no-store"})
@@ -126,11 +143,23 @@ class Handler(BaseHTTPRequestHandler):
     def _file(self, path, content_type=None, download_name=None):
         """Serve a file, honouring Range so the player can seek without refetching."""
         try:
-            size = os.path.getsize(path)
+            stat = os.stat(path)
+            size = stat.st_size
         except OSError:
             return self._json({"error": "not found"}, 404)
         ctype = content_type or content_type_for(path)
-        extra = {"Accept-Ranges": "bytes", "Cache-Control": "private, max-age=86400"}
+
+        # A page revalidates; audio and artwork are reached through an id that can never
+        # come to mean different bytes, so those may be held.
+        is_document = os.path.splitext(path)[1].lower() in (".html", ".htm")
+        etag = '"%x-%x"' % (int(stat.st_mtime), size)
+        if is_document and self._etag_hit(etag):
+            return
+        extra = {
+            "Accept-Ranges": "bytes",
+            "ETag": etag,
+            "Cache-Control": "no-cache" if is_document else "private, max-age=86400, immutable",
+        }
         if download_name:
             extra["Content-Disposition"] = 'attachment; filename="%s"' % download_name
 
@@ -276,12 +305,18 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(result)
 
     def _static(self, path):
-        if path == "/jong.css":
-            return self._send(200, bundle(os.path.join(config.WEB, "css"), ".css"),
-                              CONTENT_TYPES[".css"], {"Cache-Control": "no-cache"})
-        if path == "/jong.js":
-            return self._send(200, bundle(os.path.join(config.WEB, "js"), ".js"),
-                              CONTENT_TYPES[".js"], {"Cache-Control": "no-cache"})
+        for name, directory, ext in (("/jong.css", "css", ".css"),
+                                     ("/jong.js", "js", ".js")):
+            if path != name:
+                continue
+            body = bundle(os.path.join(config.WEB, directory), ext)
+            # The tag is the content, so an unchanged bundle costs one small round trip
+            # and a changed one is picked up immediately.
+            etag = '"%s"' % hashlib.sha256(body).hexdigest()[:16]
+            if self._etag_hit(etag):
+                return
+            return self._send(200, body, CONTENT_TYPES[ext],
+                              {"Cache-Control": "no-cache", "ETag": etag})
 
         if path == "/login":
             return self._file(os.path.join(config.WEB, "login.html"))
