@@ -1,0 +1,20 @@
+# Your library: the database and every file you have uploaded.
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Editors and systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# The agent's local settings
+client.json

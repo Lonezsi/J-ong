@@ -1,0 +1,355 @@
+#!/usr/bin/env python3
+"""The J-ong desktop agent.
+
+Watches the folders your renders land in and puts new ones into the library. It reads
+those folders and never writes to them.
+
+    python jong_client.py add "C:\\Users\\you\\Music\\Renders"
+    python jong_client.py scan            what is new, without sending anything
+    python jong_client.py push            send what is new
+    python jong_client.py watch           keep doing that
+    python jong_client.py update          pull a newer J-ong from GitHub
+    python jong_client.py install         run at logon from now on
+
+On sending only what changed: every file is hashed locally and the server is asked which
+of those hashes it already holds. Anything it has is skipped without a byte leaving the
+machine. That is as far as "only the changes" honestly goes for audio, because a fresh
+render of the same song shares essentially no bytes with the one before it.
+
+Standard library only.
+"""
+import os
+import sys
+import json
+import time
+import hashlib
+import argparse
+import subprocess
+import urllib.error
+import urllib.parse
+import urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+CONFIG_PATH = os.environ.get("JONG_CLIENT_CONFIG") or os.path.join(
+    os.environ.get("APPDATA") or os.path.expanduser("~/.config"), "jong", "client.json")
+
+AUDIO_EXT = (".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus")
+CHUNK = 1024 * 1024
+DEFAULTS = {"server": "http://127.0.0.1:7900", "folders": [], "interval_minutes": 5,
+            "auto_new_songs": False}
+
+
+# ── config ───────────────────────────────────────────────────────────────────
+def load_config():
+    out = dict(DEFAULTS)
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            out.update(json.load(f))
+    except (OSError, ValueError):
+        pass
+    return out
+
+
+def save_config(cfg):
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    tmp = CONFIG_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+    os.replace(tmp, CONFIG_PATH)
+
+
+# ── server ───────────────────────────────────────────────────────────────────
+class Server:
+    def __init__(self, base):
+        self.base = base.rstrip("/")
+
+    def _open(self, request, timeout=120):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                body = response.read().decode("utf-8")
+            return json.loads(body) if body else {}
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", "ignore")
+            try:
+                message = json.loads(detail).get("error", detail)
+            except ValueError:
+                message = detail
+            raise SystemExit("J-ong said no (%d): %s" % (e.code, message[:300]))
+        except urllib.error.URLError as e:
+            raise SystemExit("Cannot reach J-ong at %s: %s\n"
+                             "Start it with `python server.py`, or set the address with "
+                             "`jong_client.py server <url>`." % (self.base, e.reason))
+
+    def get(self, path):
+        return self._open(urllib.request.Request(self.base + path,
+                                                 headers={"Accept": "application/json"}))
+
+    def post(self, path, payload):
+        data = json.dumps(payload).encode("utf-8")
+        return self._open(urllib.request.Request(
+            self.base + path, data=data, method="POST",
+            headers={"Content-Type": "application/json"}))
+
+    def upload(self, path, file_path, headers=None):
+        size = os.path.getsize(file_path)
+        with open(file_path, "rb") as f:
+            request = urllib.request.Request(
+                self.base + path, data=f, method="POST",
+                headers=dict({"Content-Type": "application/octet-stream",
+                              "Content-Length": str(size)}, **(headers or {})))
+            return self._open(request, timeout=900)
+
+
+def digest_of(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(CHUNK), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def walk(folders):
+    for folder in folders:
+        if not os.path.isdir(folder):
+            print("  (missing) %s" % folder)
+            continue
+        for base, dirs, files in os.walk(folder):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for name in sorted(files):
+                if os.path.splitext(name)[1].lower() in AUDIO_EXT:
+                    yield os.path.join(base, name)
+
+
+def survey(cfg, server):
+    """Everything in the watched folders, split into what the library has and what it does not."""
+    paths = list(walk(cfg["folders"]))
+    if not paths:
+        return [], []
+    digests = {}
+    for path in paths:
+        try:
+            digests[path] = digest_of(path)
+        except OSError as e:
+            print("  (unreadable) %s: %s" % (path, e))
+
+    known, fresh = [], []
+    items = list(digests.items())
+    # Asked in batches so a folder of a few thousand renders is still one or two calls.
+    for start in range(0, len(items), 400):
+        batch = items[start:start + 400]
+        answer = server.get("/api/versions/have?digest=" +
+                            urllib.parse.quote(",".join(d for _, d in batch)))
+        have = answer.get("have", {})
+        for path, digest in batch:
+            match = have.get(digest)
+            if match:
+                known.append((path, match))
+            else:
+                fresh.append((path, digest))
+    return known, fresh
+
+
+# ── commands ─────────────────────────────────────────────────────────────────
+def cmd_scan(cfg, server, args):
+    known, fresh = survey(cfg, server)
+    print("%d file(s) already in the library" % len(known))
+    if not fresh:
+        print("Nothing new.")
+        return 0
+    print("\n%d new file(s):" % len(fresh))
+    for path, _ in fresh:
+        guess = server.get("/api/songs/match?name=" +
+                           urllib.parse.quote(os.path.basename(path)))
+        suggest = guess.get("suggest")
+        print("  %s" % os.path.basename(path))
+        print("      %s" % (("looks like a new render of %s" % suggest["title"])
+                            if suggest else "no obvious match, would be a new song"))
+    print("\nRun `push` to send them.")
+    return 0
+
+
+def cmd_push(cfg, server, args):
+    known, fresh = survey(cfg, server)
+    if not fresh:
+        print("Nothing new. %d file(s) already in the library." % len(known))
+        return 0
+
+    sent = skipped = 0
+    for path, _ in fresh:
+        name = os.path.basename(path)
+        guess = server.get("/api/songs/match?name=" + urllib.parse.quote(name))
+        suggest = guess.get("suggest")
+
+        song_id = None
+        if suggest:
+            if args.yes or ask("Is %s a new render of %s?" % (name, suggest["title"])):
+                song_id = suggest["song_id"]
+        if song_id is None:
+            title = os.path.splitext(name)[0]
+            if not (args.yes or cfg.get("auto_new_songs")):
+                if not ask("Add %s as a new song called %s?" % (name, title)):
+                    print("  skipped %s" % name)
+                    skipped += 1
+                    continue
+            made = server.post("/api/songs", {"title": title})
+            song_id = made["song"]["id"]
+
+        print("  sending %s" % name)
+        result = server.upload("/api/songs/%d/versions" % song_id, path,
+                               {"X-Filename": name, "X-Source-Path": path})
+        version = result.get("version", {})
+        if result.get("duplicate"):
+            print("      already there as v%s" % version.get("n"))
+        else:
+            print("      stored as v%s" % version.get("n"))
+            sent += 1
+
+    print("\n%d sent, %d skipped, %d already held." % (sent, skipped, len(known)))
+    return 0
+
+
+def ask(question):
+    try:
+        answer = input("  %s [Y/n] " % question).strip().lower()
+    except EOFError:
+        return False
+    return answer in ("", "y", "yes")
+
+
+def cmd_watch(cfg, server, args):
+    minutes = max(1, int(cfg.get("interval_minutes", 5)))
+    print("Watching %d folder(s), every %d minute(s). Ctrl-C to stop."
+          % (len(cfg["folders"]), minutes))
+    args.yes = True
+    while True:
+        try:
+            _, fresh = survey(cfg, server)
+            if fresh:
+                print("[%s] %d new" % (time.strftime("%H:%M"), len(fresh)))
+                cmd_push(cfg, server, args)
+        except SystemExit as e:
+            # A watcher that dies because the server was restarted is not a watcher.
+            print("[%s] %s" % (time.strftime("%H:%M"), e))
+        except Exception as e:
+            print("[%s] %s: %s" % (time.strftime("%H:%M"), type(e).__name__, e))
+        time.sleep(minutes * 60)
+
+
+def cmd_add(cfg, server, args):
+    path = os.path.abspath(os.path.expanduser(args.path))
+    if not os.path.isdir(path):
+        print("There is no folder at %s" % path)
+        return 1
+    if path in cfg["folders"]:
+        print("Already watching %s" % path)
+        return 0
+    cfg["folders"].append(path)
+    save_config(cfg)
+    print("Watching %s" % path)
+    return 0
+
+
+def cmd_folders(cfg, server, args):
+    if not cfg["folders"]:
+        print("No folders yet. Add one with `add <path>`.")
+    for path in cfg["folders"]:
+        print("  %s%s" % (path, "" if os.path.isdir(path) else "   (missing)"))
+    print("\nServer: %s" % cfg["server"])
+    print("Config: %s" % CONFIG_PATH)
+    return 0
+
+
+def cmd_server(cfg, server, args):
+    cfg["server"] = args.url.rstrip("/")
+    save_config(cfg)
+    print("Server set to %s" % cfg["server"])
+    return 0
+
+
+def cmd_update(cfg, server, args):
+    """Pull a newer J-ong. Fast forward only, and never over local edits."""
+    def git(*parts):
+        done = subprocess.run(("git",) + parts, cwd=ROOT, capture_output=True, text=True)
+        return done.returncode, (done.stdout + done.stderr).strip()
+
+    code, _ = git("rev-parse", "--is-inside-work-tree")
+    if code != 0:
+        print("This copy is not a git checkout, so it cannot update itself.")
+        return 1
+    code, dirty = git("status", "--porcelain")
+    if dirty:
+        print("There are uncommitted changes here. Commit or discard them first:")
+        print(dirty)
+        return 1
+    before = git("rev-parse", "HEAD")[1]
+    code, out = git("pull", "--ff-only")
+    if code != 0:
+        print("The pull did not succeed:\n%s" % out)
+        return 1
+    after = git("rev-parse", "HEAD")[1]
+    if before == after:
+        print("Already up to date.")
+    else:
+        print("Updated %s to %s.\nRestart J-ong and this client to run the new code."
+              % (before[:7], after[:7]))
+    return 0
+
+
+def cmd_install(cfg, server, args):
+    """Run `watch` at logon. Windows uses a scheduled task; elsewhere this prints what
+    to add to your own startup, because guessing a Linux init system is worse than saying so."""
+    script = os.path.abspath(__file__)
+    if os.name != "nt":
+        print("On this system, add the following to your startup:\n")
+        print("  %s %s watch" % (sys.executable, script))
+        return 0
+    name = "J-ong client"
+    command = '"%s" "%s" watch' % (sys.executable, script)
+    done = subprocess.run(
+        ["schtasks", "/Create", "/TN", name, "/TR", command, "/SC", "ONLOGON",
+         "/RL", "LIMITED", "/F"], capture_output=True, text=True)
+    if done.returncode != 0:
+        print("Could not create the scheduled task:\n%s" % (done.stderr or done.stdout).strip())
+        return 1
+    print("Installed. `%s` runs at logon." % name)
+    print("Remove it with:  schtasks /Delete /TN \"%s\" /F" % name)
+    return 0
+
+
+COMMANDS = {
+    "scan": cmd_scan, "push": cmd_push, "watch": cmd_watch, "add": cmd_add,
+    "folders": cmd_folders, "server": cmd_server, "update": cmd_update,
+    "install": cmd_install,
+}
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="The J-ong desktop agent")
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("scan", help="report what is new without sending it")
+    push = sub.add_parser("push", help="send what is new")
+    push.add_argument("-y", "--yes", action="store_true", help="do not ask about each file")
+    sub.add_parser("watch", help="scan and send on a timer")
+    add = sub.add_parser("add", help="watch a folder")
+    add.add_argument("path")
+    sub.add_parser("folders", help="list watched folders")
+    where = sub.add_parser("server", help="set the J-ong address")
+    where.add_argument("url")
+    sub.add_parser("update", help="pull a newer J-ong from GitHub")
+    sub.add_parser("install", help="run watch at logon")
+    args = parser.parse_args(argv)
+
+    if not args.command:
+        parser.print_help()
+        return 0
+    if not hasattr(args, "yes"):
+        args.yes = False
+
+    cfg = load_config()
+    server = Server(cfg["server"])
+    return COMMANDS[args.command](cfg, server, args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

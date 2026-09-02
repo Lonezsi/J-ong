@@ -1,0 +1,65 @@
+/* Tokens.
+
+   Somewhere between a chat app and a music app: the calm surfaces and generous spacing
+   of one, the dark ground and green of the other. The neutrals are not grey, they lean
+   very slightly green so the accent reads as belonging to the room rather than dropped
+   into it.
+
+   Plant green rather than the usual signal green: enough life to mark what is playing,
+   not so much that it glows. */
+
+:root {
+  --bg:          #0F1311;
+  --bg-deep:     #0A0D0B;
+  --surface:     #171C19;
+  --surface-2:   #1E2521;
+  --elevated:    #232B26;
+  --hover:       rgba(255, 255, 255, 0.045);
+  --pressed:     rgba(255, 255, 255, 0.08);
+
+  --line:        rgba(255, 255, 255, 0.07);
+  --line-2:      rgba(255, 255, 255, 0.13);
+
+  --text:        #E8EDE9;
+  --text-2:      #9BA8A0;
+  --text-3:      #6E7B74;
+  --text-on-accent: #08130C;
+
+  --accent:      #54B37A;
+  --accent-hi:   #6ECB92;
+  --accent-lo:   #3E8B5D;
+  --accent-soft: rgba(84, 179, 122, 0.14);
+  --accent-line: rgba(84, 179, 122, 0.4);
+
+  --warn:        #D9A441;
+  --bad:         #D4685E;
+
+  --font:  "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Syne", "Manrope", ui-sans-serif, system-ui, sans-serif;
+
+  /* Round, and unapologetic about it. */
+  --r-pill: 999px;
+  --r-xl:  20px;
+  --r-lg:  16px;
+  --r-md:  12px;
+  --r-sm:  8px;
+
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 20px; --s6: 28px; --s7: 40px; --s8: 56px;
+
+  --rail-w: 244px;
+  --player-h: 84px;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.36);
+  --shadow-3: 0 20px 60px rgba(0, 0, 0, 0.5);
+
+  --ease: cubic-bezier(0.22, 0.7, 0.3, 1);
+  --fast: 130ms var(--ease);
+  --med:  220ms var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --fast: 1ms linear; --med: 1ms linear; }
+  * { animation-duration: 1ms !important; scroll-behavior: auto !important; }
+}

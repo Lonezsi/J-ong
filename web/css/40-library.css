@@ -1,0 +1,125 @@
+/* Library and albums: artwork carries the page, song lists stay dense. */
+
+.cover {
+  position: relative;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+  flex: none;
+  display: grid;
+  place-items: center;
+  /* The placeholder letter is sized from the box, not from the inherited font size.
+     A percentage font-size resolves against the parent's font size, which made the
+     letter six pixels tall on a two hundred pixel cover. */
+  container-type: size;
+}
+/* No artwork yet: a calm two tone built from the title, so a library with nothing
+   uploaded still looks like a shelf rather than a row of empty boxes. */
+.cover[data-hue] {
+  background-image: linear-gradient(150deg,
+    hsl(var(--hue) 26% 32%), hsl(calc(var(--hue) + 34) 22% 17%));
+}
+.cover .letter {
+  font-family: var(--display);
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.44);
+  font-size: 44cqmin;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  user-select: none;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--s4);
+}
+
+.album-card {
+  padding: var(--s3);
+  border-radius: var(--r-lg);
+  background: transparent;
+  transition: background var(--fast);
+  cursor: pointer;
+  position: relative;
+}
+.album-card:hover { background: var(--surface-2); }
+.album-card .cover { width: 100%; aspect-ratio: 1; border-radius: var(--r-md); margin-bottom: var(--s3); }
+.album-card .t { font-weight: 700; font-size: 14px; }
+.album-card .s { font-size: 12.5px; color: var(--text-3); }
+.album-card .play-btn {
+  position: absolute; right: var(--s5); top: 46%;
+  opacity: 0; transform: translateY(6px);
+  transition: opacity var(--fast), transform var(--fast);
+}
+.album-card:hover .play-btn, .album-card:focus-within .play-btn { opacity: 1; transform: none; }
+
+/* ── song rows ────────────────────────────────────────────────────────────── */
+.tracks { display: flex; flex-direction: column; }
+.track {
+  display: grid;
+  grid-template-columns: var(--track-cols, 40px 1fr 84px 62px);
+  align-items: center;
+  gap: var(--s4);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--fast);
+}
+.track:hover { background: var(--hover); }
+.track:active { background: var(--pressed); }
+.track .lead { display: grid; place-items: center; width: 40px; }
+.track .cover { width: 40px; height: 40px; border-radius: var(--r-sm); }
+.track .index { color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+.track .title { font-weight: 600; }
+.track .sub { font-size: 12.5px; color: var(--text-3); }
+.track .dur, .track .ver { color: var(--text-3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.track .ver { text-align: left; }
+.track.playing .title { color: var(--accent-hi); }
+.track.playing .index { color: var(--accent-hi); }
+
+/* The equaliser bars that mark the row currently sounding. */
+.playing-bars { display: flex; align-items: flex-end; gap: 2px; height: 13px; }
+.playing-bars i {
+  width: 2.5px; background: var(--accent-hi); border-radius: 1px;
+  animation: bars 900ms var(--ease) infinite alternate;
+}
+.playing-bars i:nth-child(1) { height: 40%; animation-delay: -200ms; }
+.playing-bars i:nth-child(2) { height: 90%; animation-delay: -520ms; }
+.playing-bars i:nth-child(3) { height: 60%; animation-delay: -80ms; }
+@keyframes bars { to { height: 20%; } }
+.paused .playing-bars i { animation-play-state: paused; }
+
+.track-head {
+  display: grid;
+  grid-template-columns: var(--track-cols, 40px 1fr 84px 62px);
+  gap: var(--s4);
+  padding: 0 var(--s3) var(--s2);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--s2);
+}
+
+/* ── album page header ────────────────────────────────────────────────────── */
+.page-head {
+  display: flex; gap: var(--s6); align-items: flex-end;
+  padding: var(--s5) 0 var(--s6);
+}
+.page-head .cover {
+  width: clamp(140px, 20vw, 208px);
+  aspect-ratio: 1;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+}
+.page-head .meta { min-width: 0; display: flex; flex-direction: column; gap: var(--s3); }
+.page-head .stats { display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap; color: var(--text-2); font-size: 13px; }
+.page-head .stats .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-3); }
+.page-actions { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+
+@media (max-width: 700px) {
+  .page-head { flex-direction: column; align-items: flex-start; gap: var(--s4); }
+  .track { --track-cols: 40px 1fr 56px !important; }
+  .track .ver { display: none; }
+  .track-head { display: none; }
+}

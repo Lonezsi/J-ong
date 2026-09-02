@@ -1,0 +1,164 @@
+/* Controls: round, and pills where a pill says "one of these".
+
+   Three shapes only. A filled green pill for the action a screen is actually for, a
+   quiet pill for everything else, and a circle for transport. */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s2);
+  height: 38px;
+  padding: 0 var(--s5);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--elevated);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--fast), transform var(--fast), opacity var(--fast);
+}
+.btn:hover { background: #2A332D; }
+.btn:active { transform: scale(0.97); }
+.btn[disabled] { opacity: 0.45; cursor: default; transform: none; }
+
+.btn.primary { background: var(--accent); color: var(--text-on-accent); }
+.btn.primary:hover { background: var(--accent-hi); }
+.btn.ghost { background: transparent; color: var(--text-2); }
+.btn.ghost:hover { background: var(--hover); color: var(--text); }
+.btn.danger { background: transparent; color: var(--bad); }
+.btn.danger:hover { background: rgba(212, 104, 94, 0.12); }
+.btn.sm { height: 30px; padding: 0 var(--s4); font-size: 12.5px; }
+.btn.lg { height: 46px; padding: 0 var(--s6); font-size: 15px; }
+
+/* Round transport and icon buttons. */
+.icon-btn {
+  display: grid; place-items: center;
+  width: 36px; height: 36px;
+  border: 0; border-radius: 50%;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast), transform var(--fast);
+}
+.icon-btn:hover { background: var(--hover); color: var(--text); }
+.icon-btn:active { transform: scale(0.94); }
+.icon-btn.on { color: var(--accent-hi); }
+.icon-btn[disabled] { opacity: 0.35; cursor: default; }
+
+.play-btn {
+  display: grid; place-items: center;
+  width: 52px; height: 52px;
+  border: 0; border-radius: 50%;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  cursor: pointer;
+  box-shadow: var(--shadow-2);
+  transition: transform var(--fast), background var(--fast);
+}
+.play-btn:hover { background: var(--accent-hi); transform: scale(1.05); }
+.play-btn:active { transform: scale(0.97); }
+.play-btn.sm { width: 38px; height: 38px; box-shadow: none; }
+
+/* Pills: a row where exactly one is chosen. */
+.pills { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 var(--s4);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast), border-color var(--fast);
+}
+.pill:hover { background: var(--hover); color: var(--text); }
+.pill.on {
+  background: var(--accent); border-color: var(--accent); color: var(--text-on-accent);
+}
+.pill.quiet { border-color: transparent; background: var(--surface-2); }
+.pill.quiet.on { background: var(--accent); }
+
+/* A read only tag, not a control. */
+.tag {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 10px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11.5px; font-weight: 600;
+}
+.tag.accent { background: var(--accent-soft); color: var(--accent-hi); }
+.tag.warn { background: rgba(217, 164, 65, 0.14); color: var(--warn); }
+
+.field {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 10px var(--s4);
+  font-size: 14px;
+  outline: none;
+  transition: border-color var(--fast), background var(--fast);
+}
+.field:hover { border-color: var(--line-2); }
+.field:focus { border-color: var(--accent-line); background: var(--bg-deep); }
+textarea.field { min-height: 120px; resize: vertical; line-height: 1.7; }
+
+.switch {
+  position: relative; width: 40px; height: 23px; flex: none;
+  border-radius: var(--r-pill); border: 0;
+  background: var(--elevated);
+  cursor: pointer;
+  transition: background var(--fast);
+}
+.switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px;
+  width: 17px; height: 17px; border-radius: 50%;
+  background: var(--text-2);
+  transition: transform var(--fast), background var(--fast);
+}
+.switch.on { background: var(--accent); }
+.switch.on::after { transform: translateX(17px); background: var(--text-on-accent); }
+
+/* Slider used by the limiter and the volume control. */
+.range {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 20px; background: none; cursor: pointer;
+}
+.range::-webkit-slider-runnable-track {
+  height: 4px; border-radius: var(--r-pill);
+  background: linear-gradient(var(--accent), var(--accent)) 0 / var(--fill, 0%) 100% no-repeat,
+              var(--elevated);
+}
+.range::-moz-range-track { height: 4px; border-radius: var(--r-pill); background: var(--elevated); }
+.range::-moz-range-progress { height: 4px; border-radius: var(--r-pill); background: var(--accent); }
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; margin-top: -5px;
+  border-radius: 50%; background: var(--text); border: 0;
+  box-shadow: var(--shadow-1);
+  transition: transform var(--fast);
+}
+.range::-moz-range-thumb {
+  width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--text);
+}
+.range:hover::-webkit-slider-thumb { transform: scale(1.18); }
+
+.toast-stack {
+  position: fixed; left: 50%; bottom: calc(var(--player-h) + 24px);
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: var(--s2);
+  z-index: 90; pointer-events: none;
+}
+.toast {
+  background: var(--elevated);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  padding: 10px var(--s5);
+  font-size: 13.5px; font-weight: 600;
+  box-shadow: var(--shadow-2);
+  animation: toast-in 220ms var(--ease);
+}
+.toast.bad { border-color: rgba(212, 104, 94, 0.5); color: #F0A79E; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }

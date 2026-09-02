@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>J-ong</title>
+<meta name="theme-color" content="#0F1311">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Syne carries the titles because it has the look of a printed poster rather than a
+     product sans. Manrope does everything else: well used, not everywhere, and it keeps
+     its shape at twelve pixels in a dense track list. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Manrope:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/jong.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%2354B37A'/><path d='M12 9v11.2a3.2 3.2 0 1 0 2 3V13l7-2v6.2a3.2 3.2 0 1 0 2 3V7z' fill='%230F1311'/></svg>">
+</head>
+<body>
+
+<div id="app" class="shell">
+
+  <aside class="rail" id="rail">
+    <div class="rail-top">
+      <a class="wordmark" href="#/" data-link>J-ong</a>
+      <button class="icon-btn rail-close" id="railClose" aria-label="Close menu">&times;</button>
+    </div>
+
+    <nav class="nav" id="nav"></nav>
+
+    <div class="rail-section" id="railAlbums"></div>
+
+    <div class="rail-foot">
+      <button class="chip" id="newSong">New song</button>
+      <span class="rail-version" id="railVersion"></span>
+    </div>
+  </aside>
+
+  <div class="rail-scrim" id="railScrim"></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn rail-open" id="railOpen" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>
+      </button>
+      <div class="search">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M16 16l4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <input id="search" type="search" placeholder="Search your songs" aria-label="Search songs" autocomplete="off">
+      </div>
+      <span class="grow"></span>
+      <span class="update-dot" id="updateDot" hidden></span>
+    </header>
+
+    <div class="view" id="view"></div>
+  </main>
+
+  <footer class="player" id="player" hidden></footer>
+</div>
+
+<div class="sheet-backdrop" id="modalBackdrop" hidden></div>
+<div class="toast-stack" id="toasts" aria-live="polite"></div>
+
+<script src="/jong.js"></script>
+</body>
+</html>

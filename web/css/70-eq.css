@@ -1,0 +1,89 @@
+/* The equaliser.
+
+   A display you draw on rather than a bank of sliders: drag a node anywhere, add one
+   where you need it, and the curve is the sum of what you have made. The analyser sits
+   behind the curve so you can see what you are cutting. */
+
+.eq-wrap {
+  position: relative;
+  border-radius: var(--r-lg);
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+.eq-canvas { display: block; width: 100%; height: 300px; cursor: crosshair; }
+.eq-canvas.dragging { cursor: grabbing; }
+
+.eq-readout {
+  position: absolute; top: var(--s3); left: var(--s4);
+  display: flex; gap: var(--s4);
+  font-size: 11.5px; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.eq-readout b { color: var(--text); font-weight: 600; }
+
+.eq-hint {
+  position: absolute; right: var(--s4); bottom: var(--s3);
+  font-size: 11px; color: var(--text-3);
+  pointer-events: none;
+}
+
+.eq-toolbar {
+  display: flex; align-items: center; gap: var(--s3);
+  flex-wrap: wrap;
+  margin: var(--s4) 0;
+}
+
+/* The row of bands under the display, one card each. */
+.band-list { display: flex; gap: var(--s2); overflow-x: auto; padding-bottom: var(--s2); }
+.band-card {
+  flex: none; width: 148px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: var(--s3);
+  cursor: pointer;
+  transition: border-color var(--fast), background var(--fast);
+}
+.band-card:hover { background: var(--elevated); }
+.band-card.on { border-color: var(--accent); }
+.band-card.off { opacity: 0.45; }
+.band-card .head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
+.band-card .kind { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
+.band-card .freq { font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
+.band-card .nums { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.band-card select {
+  width: 100%; margin-top: var(--s2);
+  background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: 4px 6px; font-size: 11.5px; color: var(--text-2); outline: none;
+}
+
+.limiter-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--s4) var(--s5);
+  margin-top: var(--s3);
+}
+.knob-row { display: flex; flex-direction: column; gap: 4px; }
+.knob-row .lab { display: flex; justify-content: space-between; align-items: baseline; }
+.knob-row .lab span:first-child { font-size: 12.5px; color: var(--text-2); }
+.knob-row .lab b { font-size: 12.5px; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+.gr-meter {
+  height: 8px; border-radius: var(--r-pill);
+  background: var(--elevated);
+  overflow: hidden;
+}
+.gr-meter i {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--accent), var(--warn));
+  transition: width 60ms linear;
+}
+
+.sound-note {
+  margin-top: var(--s4);
+  font-size: 12.5px;
+  color: var(--text-3);
+}
