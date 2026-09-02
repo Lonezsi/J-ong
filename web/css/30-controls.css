@@ -145,6 +145,18 @@ textarea.field { min-height: 120px; resize: vertical; line-height: 1.7; }
 }
 .range:hover::-webkit-slider-thumb { transform: scale(1.18); }
 
+/* A plain row in a settings or folder list. Generic, so it lives with the controls
+   rather than inside one screen's stylesheet, which is where it used to be until that
+   screen was rewritten out from under it. */
+.list-row {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  margin-bottom: var(--s2);
+}
+.list-row .grow { min-width: 0; flex: 1; }
+
 .toast-stack {
   position: fixed; left: 50%; bottom: calc(var(--player-h) + 24px);
   transform: translateX(-50%);

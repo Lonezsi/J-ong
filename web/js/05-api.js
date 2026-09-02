@@ -15,10 +15,23 @@ J.api = async function (path, options) {
     delete opts.json;
   }
   let response;
-  try {
-    response = await fetch(path, opts);
-  } catch (e) {
-    throw new Error("J-ong is not answering. Is the server still running?");
+  // A restart takes a couple of seconds, and during it every request in flight fails.
+  // Giving up on the first one turns a blink into a broken screen, so a read is tried
+  // again briefly before anything is said. Writes are never retried: sending the same
+  // upload twice is worse than reporting the failure.
+  const idempotent = !opts.method || opts.method === "GET";
+  const attempts = idempotent ? 3 : 1;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      response = await fetch(path, opts);
+      break;
+    } catch (e) {
+      if (attempt >= attempts) {
+        throw new Error("J-ong is not answering. It may be restarting; "
+                        + "give it a moment and try again.");
+      }
+      await new Promise((done) => setTimeout(done, attempt * 400));
+    }
   }
   const text = await response.text();
   let data = {};

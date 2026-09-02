@@ -8,7 +8,7 @@
 <meta name="robots" content="noindex, nofollow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Manrope:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;800;900&family=Manrope:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/jong.css">
 <style>
 /* The door. It borrows the app's tokens and adds nothing of its own but a layout. */
@@ -145,6 +145,15 @@ $("door").addEventListener("submit", async (e) => {
     $("password").select();
   }
 });
+
+/* The uploaded display face, so the door and the library look like one product. */
+fetch("/api/appearance/font", { method: "HEAD" }).then((r) => {
+  if (!r.ok) return;
+  const style = document.createElement("style");
+  style.textContent = '@font-face{font-family:"Jong Display";'
+    + 'src:url("/api/appearance/font");font-display:swap}';
+  document.head.appendChild(style);
+}).catch(() => { /* the open face is a fine door */ });
 
 decideMode();
 </script>

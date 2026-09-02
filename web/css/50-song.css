@@ -1,69 +1,271 @@
-/* The song page: one header, a row of pills, and one panel at a time. */
+/* The song page.
+ *
+ * One page, read top to bottom, with no tabs. Everything a song has sits in its own
+ * place: the cover, the name, the version, then the words, then the sound, then the
+ * renders. Nothing is behind a button that only says what is behind it.
+ *
+ * The things themselves are the controls. The title is an editable line, not a Rename
+ * button. The cover takes a pen when you point at it. The version reads as a version and
+ * opens the list when you press it.
+ */
 
-.song-tabs {
-  display: flex; gap: var(--s2);
-  padding: var(--s2) 0 var(--s5);
-  border-bottom: 1px solid var(--line);
-  margin-bottom: var(--s5);
-  overflow-x: auto;
-  scrollbar-width: none;
+/* ── the header ───────────────────────────────────────────────────────────── */
+.hero {
+  position: relative;
+  /* Out past the view's padding, so the artwork reaches the panel edges. */
+  margin: calc(var(--s2) * -1) calc(var(--s5) * -1) var(--s6);
+  padding: var(--s8) var(--s5) var(--s6);
+  isolation: isolate;
+  /* The artwork behind this is deliberately larger than the header so the blur has no
+     hard edge. Without clipping it here that overhang becomes page width, and the whole
+     library scrolls sideways. */
+  overflow: hidden;
 }
-.song-tabs::-webkit-scrollbar { display: none; }
 
-.panel { animation: panel-in 180ms var(--ease); }
-@keyframes panel-in { from { opacity: 0; transform: translateY(4px); } }
-
-/* ── lyrics ───────────────────────────────────────────────────────────────── */
-.lyric-pager {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--s3);
-  margin-bottom: var(--s5);
+/* The song's own artwork, enormous and out of focus, moving slower than the page.
+   It is the only decoration on the page and it is made of the song's own content. */
+.hero-art {
+  position: absolute;
+  inset: -30% -15% -10%;
+  z-index: -2;
+  background-size: cover;
+  background-position: center;
+  filter: blur(64px) saturate(170%);
+  opacity: 0.5;
+  transform: translate3d(0, 0, 0) scale(1.3);
+  will-change: transform;
 }
-.lyric-pager .center { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
-.lyric-name { font-family: var(--display); font-weight: 700; font-size: 18px; letter-spacing: -0.02em; }
-.lyric-dots { display: flex; gap: 5px; }
-.lyric-dots i {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--line-2); transition: background var(--fast), width var(--fast);
+.hero-art.flat {
+  /* No artwork yet: a wash built from the title, so the page still has a temperature. */
+  background-image: radial-gradient(120% 90% at 20% 0%,
+      hsl(var(--hue) 40% 28%), transparent 70%),
+    radial-gradient(120% 90% at 90% 20%,
+      hsl(calc(var(--hue) + 48) 35% 22%), transparent 65%);
+  filter: blur(40px);
 }
-.lyric-dots i.on { background: var(--accent); width: 18px; border-radius: var(--r-pill); }
-
-.lyric-stage { overflow: hidden; }
-.lyric-body {
-  font-size: 16.5px;
-  line-height: 1.9;
-  max-width: 54ch;
-  white-space: pre-wrap;
-  color: var(--text);
-  min-height: 180px;
+.hero-veil {
+  position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--surface) 30%, transparent) 0%,
+    color-mix(in srgb, var(--surface) 72%, transparent) 45%,
+    var(--surface) 96%);
 }
-.lyric-body.slide-left { animation: slide-left 190ms var(--ease); }
-.lyric-body.slide-right { animation: slide-right 190ms var(--ease); }
-@keyframes slide-left { from { opacity: 0; transform: translateX(26px); } }
-@keyframes slide-right { from { opacity: 0; transform: translateX(-26px); } }
 
-.lyric-edit { max-width: 54ch; }
-.lyric-edit textarea { min-height: 320px; font-size: 16px; line-height: 1.9; }
-.lyric-empty { color: var(--text-3); font-style: italic; }
+.hero-row { display: flex; gap: var(--s6); align-items: flex-end; }
 
-.history-list { display: flex; flex-direction: column; gap: 2px; margin-top: var(--s3); }
-.history-item {
-  display: flex; align-items: center; gap: var(--s3);
-  padding: var(--s2) var(--s3);
-  border-radius: var(--r-md);
+/* The cover, and the pen that appears on it. */
+.cover-edit {
+  position: relative;
+  width: clamp(132px, 19vw, 208px);
+  aspect-ratio: 1;
+  border: 0; padding: 0;
+  border-radius: var(--r-lg);
+  overflow: hidden;
   cursor: pointer;
+  flex: none;
+  background: none;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  transition: transform var(--fast);
+}
+.cover-edit .cover { width: 100%; height: 100%; border-radius: var(--r-lg); }
+.cover-edit:hover { transform: translateY(-2px); }
+.cover-pen {
+  position: absolute; top: var(--s2); right: var(--s2);
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: rgba(10, 13, 11, 0.66);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity var(--fast), transform var(--fast);
+}
+.cover-edit:hover .cover-pen,
+.cover-edit:focus-visible .cover-pen { opacity: 1; transform: none; }
+
+.hero-meta { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: var(--s3); }
+
+/* The name. Bigger and bolder than anything else in the product, because it is the
+   thing the page is about. */
+.song-title {
+  font-family: var(--display);
+  font-size: clamp(38px, 6.4vw, 84px);
+  font-weight: 900;
+  line-height: 0.94;
+  letter-spacing: -0.03em;
+  margin: 0;
+  color: var(--text);
+  word-break: break-word;
+  cursor: text;
+  border-radius: var(--r-sm);
   transition: background var(--fast);
 }
-.history-item:hover { background: var(--hover); }
-.history-item .when { font-size: 13px; font-variant-numeric: tabular-nums; }
-.history-item .size { font-size: 12px; color: var(--text-3); }
+.song-title:hover { background: rgba(255, 255, 255, 0.05); }
+.song-title-input {
+  font-family: var(--display);
+  font-size: clamp(38px, 6.4vw, 84px);
+  font-weight: 900;
+  line-height: 0.94;
+  letter-spacing: -0.03em;
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  border: 0;
+  border-bottom: 2px solid var(--accent);
+  color: var(--text);
+  padding: 0;
+  outline: none;
+}
 
-/* ── versions and A/B ─────────────────────────────────────────────────────── */
+/* Every name it used to have, the way an account remembers its old handles. */
+.also-known {
+  position: relative;
+  align-self: flex-start;
+  font-size: 12.5px;
+  color: var(--text-3);
+  background: none; border: 0; padding: 2px 0;
+  cursor: pointer;
+  text-align: left;
+}
+.also-known:hover { color: var(--text-2); }
+.also-known b { font-weight: 600; color: var(--text-2); }
+.name-list {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+  min-width: 230px;
+  background: var(--elevated);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-3);
+  padding: var(--s2);
+  animation: pop 140ms var(--ease);
+}
+@keyframes pop { from { opacity: 0; transform: translateY(-4px); } }
+.name-list li {
+  display: flex; justify-content: space-between; gap: var(--s4);
+  padding: 6px var(--s3); border-radius: var(--r-sm);
+  font-size: 13px;
+}
+.name-list ul { list-style: none; margin: 0; padding: 0; }
+.name-list .when { color: var(--text-3); font-size: 11.5px; white-space: nowrap; }
+
+.hero-line { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.hero-facts { display: flex; align-items: center; gap: var(--s2); color: var(--text-2); font-size: 13.5px; }
+.hero-facts .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-3); }
+.hero-facts a:hover { color: var(--text); text-decoration: underline; }
+
+/* The version reads as a version and opens the list. Not a button labelled Versions. */
+.version-pick {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  padding: 5px var(--s3) 5px var(--s4);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast);
+}
+.version-pick:hover { background: rgba(255, 255, 255, 0.12); border-color: var(--accent-line); }
+.version-pick .caret { opacity: 0.5; }
+
+/* ── the blocks below ─────────────────────────────────────────────────────── */
+.block { margin-bottom: var(--s8); scroll-margin-top: var(--s5); }
+.block-head {
+  display: flex; align-items: center; gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+.block-head h2 {
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.block-head .grow { flex: 1; }
+.block-tools { display: flex; align-items: center; gap: var(--s2); opacity: 0; transition: opacity var(--fast); }
+.block:hover .block-tools, .block:focus-within .block-tools { opacity: 1; }
+
+/* ── lyrics ───────────────────────────────────────────────────────────────── */
+/* The words are the control. Click them and they become editable in place. */
+.lyrics {
+  font-size: 17px;
+  line-height: 1.9;
+  max-width: 56ch;
+  white-space: pre-wrap;
+  color: var(--text);
+  min-height: 72px;
+  padding: var(--s3);
+  margin: calc(var(--s3) * -1);
+  border-radius: var(--r-md);
+  cursor: text;
+  transition: background var(--fast);
+}
+.lyrics:hover { background: rgba(255, 255, 255, 0.035); }
+.lyrics.empty-words { color: var(--text-3); font-style: italic; }
+.lyrics.reading { cursor: default; opacity: 0.85; }
+
+textarea.lyrics-edit {
+  font-size: 17px; line-height: 1.9;
+  max-width: 56ch; width: 100%;
+  min-height: 320px;
+  background: var(--bg);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  padding: var(--s3);
+  color: var(--text);
+  outline: none;
+  resize: vertical;
+}
+
+.sheet-tabs { display: flex; align-items: center; gap: var(--s1); }
+.sheet-tab {
+  background: none; border: 0;
+  color: var(--text-3);
+  font-size: 13px; font-weight: 600;
+  padding: 4px var(--s3);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: color var(--fast), background var(--fast);
+}
+.sheet-tab:hover { color: var(--text); background: var(--hover); }
+.sheet-tab.on { color: var(--accent-hi); background: var(--accent-soft); }
+
+/* Looking at an old version is looking, not restoring. */
+.time-bar {
+  display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+  padding: var(--s3) var(--s4);
+  margin-bottom: var(--s4);
+  border-radius: var(--r-md);
+  background: rgba(217, 164, 65, 0.1);
+  border: 1px solid rgba(217, 164, 65, 0.3);
+  font-size: 13px;
+}
+.time-bar .grow { flex: 1; }
+
+.history-rail { display: flex; flex-direction: column; gap: 1px; max-height: 320px; overflow-y: auto; }
+.history-entry {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: 7px var(--s3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-2);
+  transition: background var(--fast), color var(--fast);
+}
+.history-entry:hover { background: var(--hover); color: var(--text); }
+.history-entry.on { background: var(--accent-soft); color: var(--accent-hi); }
+.history-entry .when { font-variant-numeric: tabular-nums; }
+.history-entry .grow { flex: 1; }
+.history-entry .size { color: var(--text-3); font-size: 11.5px; }
+
+/* ── versions ─────────────────────────────────────────────────────────────── */
 .ab-bar {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: var(--s3);
-  align-items: stretch;
-  margin-bottom: var(--s5);
+  display: grid; grid-template-columns: 1fr auto 1fr;
+  gap: var(--s3); align-items: stretch; margin-bottom: var(--s4);
 }
 .ab-slot {
   border: 1px solid var(--line);
@@ -78,60 +280,57 @@
 .ab-slot.on { border-color: var(--accent); background: var(--accent-soft); }
 .ab-slot .k { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; color: var(--text-3); }
 .ab-slot.on .k { color: var(--accent-hi); }
-.ab-slot .v { font-family: var(--display); font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.ab-slot .v { font-family: var(--display); font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
 .ab-slot .d { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .ab-mid { display: grid; place-items: center; gap: var(--s2); }
 .ab-hint { font-size: 11.5px; color: var(--text-3); text-align: center; }
 
 .version-row {
   display: grid;
-  grid-template-columns: 58px 1fr 92px 62px auto;
+  grid-template-columns: 62px 1fr 92px 58px auto;
   align-items: center; gap: var(--s3);
   padding: var(--s2) var(--s3);
   border-radius: var(--r-md);
+  cursor: pointer;
   transition: background var(--fast);
 }
 .version-row:hover { background: var(--hover); }
 .version-row.current { background: var(--accent-soft); }
-.version-row .n { font-family: var(--display); font-weight: 700; font-size: 16px; }
+.version-row .n { font-family: var(--display); font-weight: 800; font-size: 15px; }
 .version-row.current .n { color: var(--accent-hi); }
 .version-row .when, .version-row .dur { font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .version-row .acts { display: flex; gap: var(--s1); opacity: 0; transition: opacity var(--fast); }
 .version-row:hover .acts, .version-row:focus-within .acts { opacity: 1; }
 
-/* ── artwork grid ─────────────────────────────────────────────────────────── */
-.art-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--s3); }
-.art-tile { position: relative; border-radius: var(--r-md); overflow: hidden; aspect-ratio: 1; }
+/* ── artwork strip ────────────────────────────────────────────────────────── */
+.art-strip { display: flex; gap: var(--s2); flex-wrap: wrap; }
+.art-tile {
+  position: relative; width: 92px; height: 92px;
+  border-radius: var(--r-md); overflow: hidden; cursor: pointer;
+}
 .art-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.art-tile .acts {
+.art-tile .drop {
   position: absolute; inset: auto 0 0 0;
-  display: flex; justify-content: flex-end; gap: var(--s1); padding: var(--s2);
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
+  display: flex; justify-content: center; gap: var(--s1); padding: 4px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
   opacity: 0; transition: opacity var(--fast);
 }
-.art-tile:hover .acts { opacity: 1; }
-.art-tile.is-cover::before {
-  content: "Cover"; position: absolute; left: var(--s2); top: var(--s2); z-index: 1;
-  background: var(--accent); color: var(--text-on-accent);
-  font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: var(--r-pill);
-}
-
-.dropzone {
+.art-tile:hover .drop { opacity: 1; }
+.art-tile.is-cover { outline: 2px solid var(--accent); outline-offset: -2px; }
+.art-add {
+  width: 92px; height: 92px;
   border: 1.5px dashed var(--line-2);
-  border-radius: var(--r-lg);
-  padding: var(--s6);
-  text-align: center;
-  color: var(--text-2);
-  transition: border-color var(--fast), background var(--fast);
-}
-.dropzone.hot { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
-
-/* ── youtube + sync rows ──────────────────────────────────────────────────── */
-.list-row {
-  display: flex; align-items: center; gap: var(--s3);
-  padding: var(--s3);
   border-radius: var(--r-md);
-  background: var(--surface-2);
-  margin-bottom: var(--s2);
+  background: none; color: var(--text-3);
+  display: grid; place-items: center;
+  cursor: pointer;
+  transition: border-color var(--fast), color var(--fast);
 }
-.list-row .grow { min-width: 0; }
+.art-add:hover { border-color: var(--accent); color: var(--accent-hi); }
+
+@media (max-width: 720px) {
+  .hero { padding-top: var(--s6); }
+  .hero-row { flex-direction: column; align-items: flex-start; gap: var(--s4); }
+  .version-row { grid-template-columns: 54px 1fr auto; }
+  .version-row .when, .version-row .dur { display: none; }
+}

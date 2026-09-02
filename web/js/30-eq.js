@@ -245,12 +245,16 @@ J.eq = (function () {
       if (band) {
         selected = band.id;
         onSelect(band.id);
-        drag = { id: band.id, moved: false };
+        drag = { id: band.id, moved: false, from: point };
         canvas.setPointerCapture(e.pointerId);
         canvas.classList.add("dragging");
       } else {
-        selected = null;
-        onSelect(null);
+        // Empty space: put a band here and start dragging it in the same motion. The
+        // node lands under the pointer that asked for it, so one gesture places it.
+        const band = addAt(point);
+        drag = { id: band.id, moved: false, from: point, fresh: true };
+        canvas.setPointerCapture(e.pointerId);
+        canvas.classList.add("dragging");
       }
     });
 
@@ -290,21 +294,28 @@ J.eq = (function () {
       commit();
     }, { passive: false });
 
+    /* Placing a band, wherever the pointer went down. */
+    function addAt(point) {
+      const band = {
+        id: newId(), type: "peaking",
+        freq: Math.round(J.clamp(xToF(point.x), F_MIN, F_MAX) * 10) / 10,
+        gain: Math.round(J.clamp(yToG(point.y), -range, range) * 10) / 10,
+        q: 1.2, on: true,
+      };
+      data.bands.push(band);
+      data.bands.sort((a, b) => a.freq - b.freq);
+      selected = band.id;
+      onSelect(band.id);
+      commit();
+      return band;
+    }
+
+    // Double clicking a node takes it away again, which is the pair to placing one.
     canvas.addEventListener("dblclick", (e) => {
-      const point = at(e);
-      const band = nodeAt(point);
-      if (band) {
-        data.bands = data.bands.filter((b) => b.id !== band.id);
-        if (selected === band.id) { selected = null; onSelect(null); }
-      } else {
-        const freq = Math.round(xToF(point.x) * 10) / 10;
-        const gain = Math.round(J.clamp(yToG(point.y), -range, range) * 10) / 10;
-        const added = { id: newId(), type: "peaking", freq, gain, q: 1.2, on: true };
-        data.bands.push(added);
-        data.bands.sort((a, b) => a.freq - b.freq);
-        selected = added.id;
-        onSelect(added.id);
-      }
+      const band = nodeAt(at(e));
+      if (!band) return;
+      data.bands = data.bands.filter((b) => b.id !== band.id);
+      if (selected === band.id) { selected = null; onSelect(null); }
       commit();
     });
 

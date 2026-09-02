@@ -35,7 +35,10 @@
   --bad:         #D4685E;
 
   --font:  "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --display: "Syne", "Manrope", ui-sans-serif, system-ui, sans-serif;
+  /* "Jong Display" is whatever font has been uploaded in Settings, registered at runtime.
+     Orbitron is the openly licensed stand in until one is: geometric and technical, the
+     nearest thing to the face this library was designed around that can ship in a repo. */
+  --display: "Jong Display", "Orbitron", "Manrope", ui-sans-serif, system-ui, sans-serif;
 
   /* Round, and unapologetic about it. */
   --r-pill: 999px;

@@ -46,7 +46,9 @@ CHUNK = 256 * 1024
 # Reachable without signing in: the door itself, the stylesheet it wears, and the calls
 # the door has to make. Everything else needs a session when the auth module is loaded.
 OPEN_PAGES = {"/login", "/jong.css", "/favicon.ico"}
-OPEN_API = {"/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/health"}
+OPEN_API = {"/api/auth/state", "/api/auth/login", "/api/auth/setup", "/api/health",
+            # the door wears the same typeface as the library behind it
+            "/api/appearance/font"}
 
 
 def content_type_for(name):

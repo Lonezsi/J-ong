@@ -26,13 +26,15 @@ MODULES = [
     # Take this out and the library has no door at all, which is what you want when it
     # only ever listens on localhost.
     "auth",
+    "appearance",
     "songs",
     "versions",
     "artwork",
     "lyrics",
     "albums",
     "sound",
-    "youtube",
+    # "youtube",  uploading happens at the moment you do it, and the EQ is never
+    #             part of what goes up, so there was nothing here worth recording
     "sync",
     "updater",
 ]

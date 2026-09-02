@@ -24,6 +24,15 @@ SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS songs_title ON songs(title)",
+    """
+    CREATE TABLE IF NOT EXISTS song_titles (
+      id         INTEGER PRIMARY KEY,
+      song_id    INTEGER NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+      title      TEXT NOT NULL,
+      changed_at REAL NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS song_titles_song ON song_titles(song_id, id DESC)",
 ]
 
 
@@ -106,12 +115,24 @@ def create_song(req):
     return {"song": decorate([get(song_id)])[0]}
 
 
+def titles(req):
+    """Every name this song has been called, newest first."""
+    song = get(req.params["id"])
+    rows = db.query("SELECT title, changed_at FROM song_titles WHERE song_id = ? "
+                    "ORDER BY id DESC", (song["id"],))
+    return {"current": song["title"], "previous": rows}
+
+
 def update_song(req):
     song = get(req.params["id"])
     data = req.json()
     patch = {}
     if "title" in data:
         patch["title"] = need(data, "title")
+        if patch["title"] != song["title"]:
+            # The name it is leaving behind, kept so you can see what it used to be.
+            db.insert("song_titles", {"song_id": song["id"], "title": song["title"],
+                                      "changed_at": time.time()})
     if "notes" in data:
         patch["notes"] = data["notes"] or ""
     if "current_version_id" in data:
@@ -170,6 +191,7 @@ def ROUTES():
         ("POST", "/api/songs"): create_song,
         ("GET", "/api/songs/match"): match,
         ("GET", "/api/songs/<id>"): get_song,
+        ("GET", "/api/songs/<id>/titles"): titles,
         ("PATCH", "/api/songs/<id>"): update_song,
         ("DELETE", "/api/songs/<id>"): delete_song,
     }

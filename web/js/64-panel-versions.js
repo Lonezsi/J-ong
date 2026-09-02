@@ -6,7 +6,7 @@
  */
 "use strict";
 
-J.panelVersions = async function (panel, ctx) {
+J.blockVersions = async function (panel, ctx) {
   let versions = ctx.versions.slice();
   let currentId = ctx.song.current_version_id;
 
@@ -30,7 +30,7 @@ J.panelVersions = async function (panel, ctx) {
     const active = J.player.state.active;
 
     panel.innerHTML = `
-      <div class="panel">
+      <div>
         ${versions.length ? `
           <div class="ab-bar">
             ${["A", "B"].map((slot) => {
@@ -47,10 +47,12 @@ J.panelVersions = async function (panel, ctx) {
             }).join('<div class="ab-mid"><button class="btn sm" data-act="swap">Swap</button><span class="ab-hint">or press X</span></div>')}
           </div>` : ""}
 
-        <div class="section-head" style="margin-top:var(--s5)">
-          <h3>${versions.length} render${versions.length === 1 ? "" : "s"}</h3>
+        <div class="block-head">
+          <h2>Renders</h2>
           <span class="grow"></span>
-          <button class="btn sm" data-act="upload">Upload render</button>
+          <span class="block-tools">
+            <button class="btn ghost sm" data-act="upload">Upload a render</button>
+          </span>
         </div>
 
         ${versions.length ? `

@@ -73,7 +73,9 @@ def create_sheet(req):
     name = (data.get("name") or "").strip()
     existing = db.query("SELECT * FROM lyric_sheets WHERE song_id = ?", (song["id"],))
     if not name:
-        name = "Current" if not existing else "Alternative %d" % (len(existing) + 1)
+        # Nobody wants to name a thing before writing it. A number is enough until it
+        # earns a name, and with only one sheet the name is never shown at all.
+        name = "v%d" % (len(existing) + 1)
     row = db.one("SELECT MAX(position) AS p FROM lyric_sheets WHERE song_id = ?", (song["id"],))
     sheet_id = db.insert("lyric_sheets", {
         "song_id": song["id"], "name": name,

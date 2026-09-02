@@ -10,7 +10,7 @@
  */
 "use strict";
 
-J.panelSound = async function (panel, ctx) {
+J.blockSound = async function (panel, ctx) {
   let presets = [];
   let active = null;
   let editor = null;
@@ -44,13 +44,17 @@ J.panelSound = async function (panel, ctx) {
   function draw() {
     const lim = active.data.limiter || {};
     panel.innerHTML = `
-      <div class="panel">
-        <div class="pills" id="presetPills" style="margin-bottom:var(--s4)"></div>
+      <div>
+        <div class="block-head">
+          <h2>Sound</h2>
+          <span class="grow"></span>
+          <span id="presetPills" class="sheet-tabs"></span>
+        </div>
 
         <div class="eq-wrap">
           <canvas class="eq-canvas" id="eqCanvas"></canvas>
           <div class="eq-readout" id="eqReadout"></div>
-          <div class="eq-hint">double click to add &middot; drag to move &middot; wheel for Q</div>
+          <div class="eq-hint">click to place a band &middot; drag it &middot; wheel for Q &middot; double click to remove</div>
         </div>
 
         <div class="eq-toolbar">
@@ -109,10 +113,10 @@ J.panelSound = async function (panel, ctx) {
   function renderPresets() {
     J.$("#presetPills", panel).innerHTML =
       presets.map((p) => `
-        <button class="pill ${p.id === active.id ? "on" : ""}" data-preset="${p.id}">
-          ${J.esc(p.name)}${p.is_current ? " &middot;" : ""}
+        <button class="sheet-tab ${p.id === active.id ? "on" : ""}" data-preset="${p.id}">
+          ${J.esc(p.name)}
         </button>`).join("") +
-      '<button class="pill quiet" data-act="new-preset">+ Preset</button>';
+      '<button class="sheet-tab" data-act="new-preset" title="A preset to compare against">+</button>';
 
     J.$("#presetActions", panel).innerHTML = `
       ${active.is_current ? "" : '<button class="btn sm" data-act="make-current">Use this preset by default</button>'}
@@ -129,7 +133,7 @@ J.panelSound = async function (panel, ctx) {
     const bands = active.data.bands || [];
     if (!bands.length) {
       list.innerHTML = `<p class="faint" style="margin:var(--s2) 0">
-        No bands yet. Double click the display where you want one, or use the buttons above.</p>`;
+        Flat. Click anywhere on the display to place a band exactly there.</p>`;
       refreshReadout();
       return;
     }

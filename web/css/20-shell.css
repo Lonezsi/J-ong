@@ -144,6 +144,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--s2) var(--s5) var(--s8);
   scroll-behavior: smooth;
 }

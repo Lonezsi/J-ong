@@ -152,6 +152,7 @@ J.views.settings = {
   async render(root) {
     const state = await J.get("/api/state");
     let update = null;
+    let font = (state.summary && state.summary.appearance) || { custom_font: false };
 
     function draw() {
       root.innerHTML = `
@@ -207,6 +208,29 @@ J.views.settings = {
         </div>
 
         <div class="section">
+          <div class="section-head"><h2>Display font</h2></div>
+          <p class="faint" style="margin-top:0">
+            The face used for titles. J-ong does not ship the one you want, because a
+            licensed or shareware font does not belong in a public repository. Upload it
+            here instead and it stays in your own data directory, served only to you.
+          </p>
+          <div class="list-row">
+            <span class="grow">
+              <div style="font-weight:600;font-family:var(--display);font-size:19px">
+                ${font.custom_font ? J.esc(font.font_name) : "Orbitron"}</div>
+              <div class="faint" style="font-size:12px">
+                ${font.custom_font
+                  ? `yours, uploaded ${J.when(font.uploaded_at)}`
+                  : "the open licensed stand in"}</div>
+            </span>
+            <button class="btn sm" data-act="pick-font">Upload a font</button>
+            ${font.custom_font
+              ? '<button class="btn ghost sm danger" data-act="clear-font">Remove</button>' : ""}
+          </div>
+          <input type="file" id="fontPick" accept=".ttf,.otf,.woff,.woff2,font/*" hidden>
+        </div>
+
+        <div class="section">
           <div class="section-head"><h2>Password</h2></div>
           <p class="faint" style="margin-top:0">
             Any password is accepted, however short. Guessing is limited to a few tries
@@ -247,6 +271,17 @@ J.views.settings = {
           J.applyAccent(saved.accent);
           J.emit("settings:changed");
         }
+      }
+
+      if (act.dataset.act === "pick-font") { J.$("#fontPick", root).click(); return; }
+
+      if (act.dataset.act === "clear-font") {
+        const done = await J.try(() => J.del("/api/appearance/font"), "Back to Orbitron");
+        if (!done) return;
+        font = done.font;
+        J.wearFont(font);
+        draw();
+        return;
       }
 
       if (act.dataset.act === "sign-out") {
@@ -295,5 +330,19 @@ J.views.settings = {
     });
 
     draw();
+
+    // Delegated on the view, because draw() replaces the input each time.
+    root.addEventListener("change", async (e) => {
+      const picker = e.target.closest("#fontPick");
+      if (!picker || !picker.files.length) return;
+      const file = picker.files[0];
+      picker.value = "";
+      const done = await J.try(() => J.upload("/api/appearance/font", file));
+      if (!done) return;
+      font = done.font;
+      J.wearFont(font);
+      J.toast("Titles are wearing " + file.name);
+      draw();
+    });
   },
 };

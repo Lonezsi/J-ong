@@ -74,6 +74,9 @@ J.views.library = {
             </div>
           </div>
         </div>`;
+      // The handler is wired below, after this block used to return straight past it,
+      // which left both of these buttons doing nothing at all on a fresh library.
+      wire(root, []);
       return;
     }
 
@@ -107,15 +110,19 @@ J.views.library = {
           : `<div class="empty"><h3>No songs match that</h3><p>Try a shorter search.</p></div>`}
       </div>`;
 
-    J.wireTracks(root, songs);
-    root.addEventListener("click", (e) => {
-      const card = e.target.closest(".album-card");
-      if (card) location.hash = `#/album/${card.dataset.album}`;
-      if (e.target.closest("[data-new-song]")) J.newSong();
-      if (e.target.closest("[data-new-album]")) J.newAlbum();
-    });
+    wire(root, songs);
   },
 };
+
+function wire(root, songs) {
+  if (songs.length) J.wireTracks(root, songs);
+  root.addEventListener("click", (e) => {
+    const card = e.target.closest(".album-card");
+    if (card) location.hash = `#/album/${card.dataset.album}`;
+    if (e.target.closest("[data-new-song]")) J.newSong();
+    if (e.target.closest("[data-new-album]")) J.newAlbum();
+  });
+}
 
 J.newSong = async function () {
   const values = await J.sheet({

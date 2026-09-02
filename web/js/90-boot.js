@@ -35,6 +35,24 @@ J.alpha = (hex, a) => {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 };
 
+/* Register an uploaded display face under one name, so the whole stylesheet can ask for
+ * "Jong Display" and get either your font or the open one behind it. */
+J.wearFont = function (info) {
+  const already = document.getElementById("jong-display-face");
+  if (already) already.remove();
+  if (!info || !info.custom_font) return;
+  const format = { "font/ttf": "truetype", "font/otf": "opentype",
+                   "font/woff": "woff", "font/woff2": "woff2" }[info.font_format] || "truetype";
+  const style = document.createElement("style");
+  style.id = "jong-display-face";
+  style.textContent = `@font-face {
+    font-family: "Jong Display";
+    src: url("/api/appearance/font?v=${Math.floor(info.uploaded_at || 0)}") format("${format}");
+    font-display: swap;
+  }`;
+  document.head.appendChild(style);
+};
+
 J.markNav = function (view) {
   J.$$("#nav a").forEach((link) => {
     link.classList.toggle("on", link.dataset.view === view);
@@ -102,6 +120,7 @@ async function boot() {
   document.title = state.name || "J-ong";
   J.$(".wordmark").textContent = state.name || "J-ong";
   J.applyAccent(state.settings && state.settings.accent);
+  J.wearFont(state.summary && state.summary.appearance);
 
   const version = J.$("#railVersion");
   const commit = state.summary && state.summary.updater && state.summary.updater.commit;
