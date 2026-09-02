@@ -2,6 +2,17 @@
 
 * { box-sizing: border-box; }
 
+/* The hidden attribute has to win against the layout.
+ *
+ * A browser's own stylesheet says [hidden] { display: none }, but that is a user agent
+ * rule and any author rule beats it. So .sheet-backdrop { display: grid } quietly turned
+ * the hidden attribute off, and the modal backdrop sat over the whole app at 60% black
+ * with nothing in it: the page looked dimmed and swallowed every click. The player did
+ * the same thing with nothing playing.
+ *
+ * Anything given a display by its class needs this to stay hideable. */
+[hidden] { display: none !important; }
+
 html, body {
   height: 100%;
   margin: 0;

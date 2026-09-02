@@ -44,7 +44,9 @@ body { display: grid; place-items: center; min-height: 100dvh; padding: var(--s4
   background: rgba(212, 104, 94, 0.12);
   color: #F0A79E; font-size: 13px; font-weight: 600;
 }
-.problem[hidden] { display: none; }
+/* Same reason as the app: an author rule setting display beats the browser's own
+   [hidden] rule, and .door label sets display: flex. */
+[hidden] { display: none !important; }
 </style>
 </head>
 <body>

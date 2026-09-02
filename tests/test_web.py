@@ -173,3 +173,37 @@ def test_the_modules_the_ui_expects_are_the_modules_that_exist():
     named = set(re.findall(r'modules\.includes\("(\w+)"\)', text))
     unknown = named - set(config.MODULES)
     assert not unknown, "the UI checks for modules that do not exist: %s" % unknown
+
+
+def test_the_hidden_attribute_beats_the_layout():
+    """A browser's own [hidden] { display: none } is a user agent rule, and any author
+    rule beats it. Without a rule of our own, .sheet-backdrop { display: grid } left the
+    modal backdrop over the whole app at 60% black with nothing in it: the page looked
+    dimmed and every click landed on the overlay instead of the interface.
+
+    Anything that carries the hidden attribute and also gets a display from its class
+    depends on this one line.
+    """
+    from jong.http import bundle
+    css = bundle(CSS_DIR, ".css").decode("utf-8")
+    assert re.search(r"\[hidden\]\s*\{[^}]*display:\s*none\s*!important", css), \
+        "nothing makes the hidden attribute win, so hidden elements with a display show"
+
+    with open(os.path.join(WEB, "login.html"), encoding="utf-8") as f:
+        login = f.read()
+    assert re.search(r"\[hidden\]\s*\{[^}]*display:\s*none\s*!important", login), \
+        "the login page has its own stylesheet and the same hazard"
+
+
+def test_everything_that_starts_hidden_can_actually_hide():
+    """Each element carrying the attribute, checked against the rules that style it."""
+    with open(os.path.join(WEB, "index.html"), encoding="utf-8") as f:
+        page = f.read()
+    css = "\n".join(open(os.path.join(CSS_DIR, n), encoding="utf-8").read()
+                    for n in sorted(os.listdir(CSS_DIR)) if n.endswith(".css"))
+
+    # Elements that start hidden, by the class they are styled through.
+    for element_class in ("player", "sheet-backdrop", "update-dot"):
+        assert element_class in page, "%s is no longer in the shell" % element_class
+    # The guard has to be present, since two of those three are given a display.
+    assert "[hidden]" in css
