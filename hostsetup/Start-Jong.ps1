@@ -49,7 +49,16 @@ if ($busy) {
     exit 0
 }
 
-$env:JONG_HOST = '127.0.0.1'
+# Listen on every interface rather than localhost alone.
+#
+# Two things need to reach it: Tailscale Funnel, which forwards from localhost, and the
+# tailnet itself on 100.x, which is how the library is reachable before Funnel has been
+# switched on for the tailnet. Binding to one of those would rule out the other.
+#
+# What makes this safe is the door: the auth module is loaded, so an unauthenticated
+# caller from anywhere gets the login page and nothing else, and until a password exists
+# even that needs the one time setup code printed below.
+$env:JONG_HOST = '0.0.0.0'
 $env:JONG_PORT = '7900'
 
 Say ("starting with {0}" -f $py)
