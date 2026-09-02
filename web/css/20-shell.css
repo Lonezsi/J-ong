@@ -90,9 +90,15 @@
 .rail-scrim { display: none; }
 
 /* Collapsing the rail on a wide screen: the column goes to nothing and the main panel
-   takes the room. This is what the hamburger does when there is no overlay to open. */
-.shell.rail-shut { grid-template-columns: 0 1fr; }
-.shell.rail-shut .rail { display: none; }
+   takes the room. This is what the hamburger does when there is no overlay to open.
+
+   Held inside a min-width query rather than left loose. Two class selectors outrank the
+   one class rule that gives a phone its single column, so as a bare rule this pinned the
+   main column to zero on every phone and collapsed the entire page behind it. */
+@media (min-width: 901px) {
+  .shell.rail-shut { grid-template-columns: 0 1fr; }
+  .shell.rail-shut .rail { display: none; }
+}
 
 /* ── main ─────────────────────────────────────────────────────────────────── */
 .main {

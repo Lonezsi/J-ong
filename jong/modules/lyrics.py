@@ -1,5 +1,10 @@
 """Lyrics, their alternatives, and the history of each.
 
+The words are Markdown, and the first line is the name. That is the whole naming scheme:
+a sheet called itself by its heading, the way a document does, so there is no separate
+name to keep in step and no Rename button to press. A sheet with nothing written yet
+falls back to its number.
+
 A song has several lyric sheets and one of them is current. Each sheet keeps every text
 it has ever held, so history belongs to the alternative rather than to the song. Saving
 the same words twice does not make a second entry, because a history full of identical
@@ -44,6 +49,19 @@ def get_sheet(sheet_id):
     return row
 
 
+def name_from(text, fallback):
+    """The first non empty line, minus any Markdown heading marks.
+
+    A document is called whatever its first line says. Doing this here rather than in the
+    browser means the name is the same everywhere it is read, including from the API.
+    """
+    for line in (text or "").splitlines():
+        line = line.strip().lstrip("#").strip()
+        if line:
+            return line[:80]
+    return fallback
+
+
 def _latest(sheet_id):
     return db.one("SELECT * FROM lyric_revisions WHERE sheet_id = ? ORDER BY id DESC LIMIT 1",
                   (sheet_id,))
@@ -86,6 +104,7 @@ def create_sheet(req):
     if text:
         db.insert("lyric_revisions",
                   {"sheet_id": sheet_id, "text": text, "created_at": time.time()})
+        db.update("lyric_sheets", sheet_id, {"name": name_from(text, name)})
     songs.touch(song["id"])
     return {"sheet": _with_text(get_sheet(sheet_id))}
 
@@ -103,6 +122,8 @@ def save_text(req):
                 "message": "Nothing changed, so no new revision was kept."}
     db.insert("lyric_revisions",
               {"sheet_id": sheet["id"], "text": text, "created_at": time.time()})
+    db.update("lyric_sheets", sheet["id"],
+              {"name": name_from(text, sheet["name"])})
     songs.touch(sheet["song_id"])
     return {"sheet": _with_text(get_sheet(sheet["id"])), "saved": True}
 
@@ -154,6 +175,7 @@ def restore(req):
                 "message": "That text is already the current one."}
     db.insert("lyric_revisions",
               {"sheet_id": sheet["id"], "text": old["text"], "created_at": time.time()})
+    db.update("lyric_sheets", sheet["id"], {"name": name_from(old["text"], sheet["name"])})
     songs.touch(sheet["song_id"])
     return {"sheet": _with_text(get_sheet(sheet["id"])), "saved": True}
 

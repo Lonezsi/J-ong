@@ -103,6 +103,13 @@ function problem(message) {
 async function decideMode() {
   try {
     const state = await (await fetch("/api/auth/state")).json();
+    if (state.custom_font) {
+      // The same face the library wears, so the door is part of the same product.
+      const face = document.createElement("style");
+      face.textContent = '@font-face{font-family:"Jong Display";'
+        + 'src:url("/api/appearance/font");font-display:swap}';
+      document.head.appendChild(face);
+    }
     if (state.signed_in) { location.href = "/"; return; }
     mode = state.has_password ? "login" : "setup";
   } catch (e) {
@@ -145,15 +152,6 @@ $("door").addEventListener("submit", async (e) => {
     $("password").select();
   }
 });
-
-/* The uploaded display face, so the door and the library look like one product. */
-fetch("/api/appearance/font", { method: "HEAD" }).then((r) => {
-  if (!r.ok) return;
-  const style = document.createElement("style");
-  style.textContent = '@font-face{font-family:"Jong Display";'
-    + 'src:url("/api/appearance/font");font-display:swap}';
-  document.head.appendChild(style);
-}).catch(() => { /* the open face is a fine door */ });
 
 decideMode();
 </script>

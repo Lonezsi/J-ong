@@ -1,9 +1,21 @@
-/* The equaliser.
+/* The equaliser and the limiter.
+ *
+ * Both are displays you work on rather than banks of sliders. The equaliser is a curve
+ * you place points on; the limiter is a meter with the two deciding lines drawn on it.
+ * Everything that can be dragged with a mouse can be dragged with a thumb, which is why
+ * Q lives on a knob rather than only on the scroll wheel.
+ */
 
-   A display you draw on rather than a bank of sliders: drag a node anywhere, add one
-   where you need it, and the curve is the sum of what you have made. The analyser sits
-   behind the curve so you can see what you are cutting. */
+/* ── presets ──────────────────────────────────────────────────────────────── */
+.preset-row { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.preset-tools {
+  display: inline-flex; align-items: center; gap: 1px;
+  margin-left: var(--s2); padding-left: var(--s2);
+  border-left: 1px solid var(--line);
+}
+.icon-btn.tiny { width: 28px; height: 28px; }
 
+/* ── the curve ────────────────────────────────────────────────────────────── */
 .eq-wrap {
   position: relative;
   border-radius: var(--r-lg);
@@ -32,58 +44,126 @@
 }
 
 .eq-toolbar {
-  display: flex; align-items: center; gap: var(--s3);
+  display: flex; align-items: center; gap: var(--s2);
   flex-wrap: wrap;
   margin: var(--s4) 0;
 }
 
-/* The row of bands under the display, one card each. */
-.band-list { display: flex; gap: var(--s2); overflow-x: auto; padding-bottom: var(--s2); }
+/* ── one card per band, with a knob for Q ─────────────────────────────────── */
+.band-list {
+  display: flex; gap: var(--s2);
+  overflow-x: auto;
+  padding-bottom: var(--s2);
+  scroll-snap-type: x proximity;
+}
 .band-card {
-  flex: none; width: 148px;
+  flex: none; width: 156px;
   background: var(--surface-2);
   border: 1px solid transparent;
   border-radius: var(--r-md);
   padding: var(--s3);
   cursor: pointer;
+  scroll-snap-align: start;
   transition: border-color var(--fast), background var(--fast);
 }
 .band-card:hover { background: var(--elevated); }
 .band-card.on { border-color: var(--accent); }
 .band-card.off { opacity: 0.45; }
 .band-card .head { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); }
-.band-card .kind { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
-.band-card .freq { font-family: var(--display); font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
-.band-card .nums { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.band-card .kind {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-3);
+}
+.band-card .freq {
+  font-family: var(--display); font-weight: 800; font-size: 19px;
+  letter-spacing: -0.02em; margin-top: 2px;
+}
+.band-card .freq .unit { font-family: var(--font); font-size: 11px; color: var(--text-3); margin-left: 3px; }
+.band-bottom { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin-top: 2px; }
+.band-card .gain { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .band-card select {
   width: 100%; margin-top: var(--s2);
   background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm);
   padding: 4px 6px; font-size: 11.5px; color: var(--text-2); outline: none;
 }
+.band-card .band-remove { width: 100%; margin-top: 6px; height: 26px; }
 
-.limiter-grid {
+/* Q, as a dial you turn. The wheel still works, but a thumb has no wheel. */
+.q-knob {
+  position: relative;
+  display: grid; place-items: center;
+  width: 34px; height: 34px;
+  cursor: ns-resize;
+  touch-action: none;
+  flex: none;
+}
+.q-knob svg { display: block; }
+.q-knob .q-value {
+  position: absolute;
+  font-size: 9px; font-weight: 700; color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.q-knob.turning .q-value, .q-knob:hover .q-value { color: var(--text); }
+.q-knob:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 50%; }
+
+.switch.tiny { width: 30px; height: 17px; }
+.switch.tiny::after { width: 11px; height: 11px; }
+.switch.tiny.on::after { transform: translateX(13px); }
+
+/* ── the limiter ──────────────────────────────────────────────────────────── */
+.limiter-head {
+  display: flex; align-items: center; gap: var(--s3);
+  margin: var(--s7) 0 var(--s3);
+}
+.limiter-head h3 {
+  font-family: var(--display); font-size: 13px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3);
+}
+.limiter-head .grow { flex: 1; }
+.limiter-nums {
+  display: flex; gap: var(--s4);
+  font-size: 11.5px; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.limiter-nums b { color: var(--text-2); font-weight: 600; }
+
+.limiter-wrap {
+  position: relative;
+  border-radius: var(--r-lg);
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+.limiter-canvas { display: block; width: 100%; height: 180px; }
+.limiter-hint {
+  position: absolute; right: var(--s4); bottom: var(--s3);
+  font-size: 11px; color: var(--text-3); pointer-events: none;
+}
+
+.limiter-knobs {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--s4) var(--s5);
-  margin-top: var(--s3);
+  margin-top: var(--s4);
 }
 .knob-row { display: flex; flex-direction: column; gap: 4px; }
 .knob-row .lab { display: flex; justify-content: space-between; align-items: baseline; }
 .knob-row .lab span:first-child { font-size: 12.5px; color: var(--text-2); }
 .knob-row .lab b { font-size: 12.5px; font-variant-numeric: tabular-nums; font-weight: 600; }
 
-.gr-meter {
-  height: 8px; border-radius: var(--r-pill);
-  background: var(--elevated);
-  overflow: hidden;
-}
-.gr-meter i {
-  display: block; height: 100%; width: 0;
-  background: linear-gradient(90deg, var(--accent), var(--warn));
-  transition: width 60ms linear;
-}
+.sound-note { margin-top: var(--s4); font-size: 12.5px; color: var(--text-3); }
 
-.sound-note {
-  margin-top: var(--s4);
-  font-size: 12.5px;
-  color: var(--text-3);
+/* ── phone ────────────────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .eq-canvas { height: 210px; }
+  .limiter-canvas { height: 150px; }
+  .eq-hint, .limiter-hint { display: none; }
+  .eq-toolbar { gap: 6px; }
+  .eq-toolbar .btn { flex: 1 1 auto; }
+  /* Cards get wider and snap, so one thumb swipe lands on one band. */
+  .band-card { width: 60vw; max-width: 220px; }
+  .q-knob { width: 42px; height: 42px; }
+  .q-knob svg { width: 42px; height: 42px; }
 }

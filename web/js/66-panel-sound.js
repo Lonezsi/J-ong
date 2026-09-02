@@ -1,12 +1,15 @@
 /* Sound: the curve, the limiter, and the presets you compare them with.
  *
- * Nothing here is written into the render. The settings are applied while the browser
- * plays, and the stored file is never touched.
+ * Nothing here is written into the render. It is applied while the browser plays, and
+ * the stored file is never touched.
  *
- * The panel is built once and then updated in place. An earlier version redrew the whole
- * thing whenever a band was added, which replaced the canvas underneath the pointer: you
- * could add a node by double clicking but never add one and drag it in the same motion,
- * because the element the drag belonged to had already been thrown away.
+ * A preset is made flat and unnamed. Naming a thing before it exists is a question with
+ * no useful answer, so the new one is called Preset 2 and the pen next to it renames it
+ * once it is worth a name. The two small buttons beside the chosen preset rename and
+ * copy it, and nothing else, so the row stays a row of presets.
+ *
+ * The panel is built once and updated in place, because rebuilding it while a node is
+ * under the pointer throws the canvas away mid drag.
  */
 "use strict";
 
@@ -14,119 +17,132 @@ J.blockSound = async function (panel, ctx) {
   let presets = [];
   let active = null;
   let editor = null;
-  let meterTimer = null;
+  let limiterView = null;
 
   const save = J.debounce(async (preset) => {
     await J.try(() => J.put(`/api/sound/${preset.id}`, { data: preset.data }));
   }, 600);
 
-  /* Edits only reach the speakers when this is the song currently playing. Shaping one
-   * song's curve while another sounds must not change what you are hearing. */
-  const isLive = () => J.player.state.song && J.player.state.song.id === ctx.song.id;
-  const pushToPlayer = () => { if (isLive()) J.player.applySound(active.data); };
+  /* Which decks are listening to this preset right now. Editing reaches those and
+   * nothing else, so shaping one song never changes what another is playing. */
+  const pushToPlayer = () => J.player.presetEdited(active.id, active.data);
+
+  function liveSlot() {
+    const state = J.player.state;
+    if (!state.song || state.song.id !== ctx.song.id) return null;
+    for (const slot of [state.active, state.active === "A" ? "B" : "A"]) {
+      const held = state.slots[slot];
+      if (held.preset && held.preset.id === active.id && held.version) return slot;
+    }
+    return null;
+  }
 
   async function load() {
     const data = await J.get(`/api/songs/${ctx.songId}/sound`);
     presets = data.presets || [];
+    ctx.presets = presets;
     active = presets.find((p) => p.is_current) || presets[0];
     draw();
   }
 
-  const LIMITER_FIELDS = [
-    ["threshold", "Threshold", -60, 0, 0.5, "dB"],
-    ["ceiling", "Ceiling", -30, 0, 0.1, "dB"],
-    ["attack", "Attack", 0, 100, 1, "ms"],
-    ["release", "Release", 1, 1000, 1, "ms"],
-  ];
+  const FLAT = () => ({
+    bands: [],
+    limiter: { on: false, threshold: -6, ceiling: -0.3, release: 120, attack: 5 },
+    gain: 0, bypass: false,
+  });
 
-  /* Full build. Only on load and when the chosen preset changes, so the canvas survives
-   * everything else. */
   function draw() {
-    const lim = active.data.limiter || {};
     panel.innerHTML = `
-      <div>
-        <div class="block-head">
-          <h2>Sound</h2>
-          <span class="grow"></span>
-          <span id="presetPills" class="sheet-tabs"></span>
+      <div class="block-head">
+        <h2>Sound</h2>
+        <span class="grow"></span>
+        <span class="preset-row" id="presetRow"></span>
+      </div>
+
+      <div class="eq-wrap">
+        <canvas class="eq-canvas" id="eqCanvas"></canvas>
+        <div class="eq-readout" id="eqReadout"></div>
+        <div class="eq-hint">click to place a band &middot; drag it &middot; double click to remove</div>
+      </div>
+
+      <div class="eq-toolbar">
+        <button class="btn sm" data-act="add" data-type="peaking">Bell</button>
+        <button class="btn sm ghost" data-act="add" data-type="highpass">Low cut</button>
+        <button class="btn sm ghost" data-act="add" data-type="lowpass">High cut</button>
+        <button class="btn sm ghost" data-act="add" data-type="lowshelf">Low shelf</button>
+        <button class="btn sm ghost" data-act="add" data-type="highshelf">High shelf</button>
+        <span class="grow"></span>
+        <div class="pills">
+          ${[12, 18, 24, 30].map((r) =>
+            `<button class="pill quiet ${r === 18 ? "on" : ""}" data-range="${r}">&plusmn;${r}</button>`).join("")}
         </div>
+        <button class="pill" id="bypassPill" data-act="bypass"></button>
+      </div>
 
-        <div class="eq-wrap">
-          <canvas class="eq-canvas" id="eqCanvas"></canvas>
-          <div class="eq-readout" id="eqReadout"></div>
-          <div class="eq-hint">click to place a band &middot; drag it &middot; wheel for Q &middot; double click to remove</div>
-        </div>
+      <div class="band-list" id="bandList"></div>
 
-        <div class="eq-toolbar">
-          <button class="btn sm" data-act="add" data-type="peaking">Add bell</button>
-          <button class="btn sm ghost" data-act="add" data-type="highpass">Low cut</button>
-          <button class="btn sm ghost" data-act="add" data-type="lowpass">High cut</button>
-          <button class="btn sm ghost" data-act="add" data-type="lowshelf">Low shelf</button>
-          <button class="btn sm ghost" data-act="add" data-type="highshelf">High shelf</button>
-          <span class="grow"></span>
-          <div class="pills">
-            ${[12, 18, 24, 30].map((r) =>
-              `<button class="pill quiet ${r === 18 ? "on" : ""}" data-range="${r}">&plusmn;${r}</button>`).join("")}
-          </div>
-          <button class="pill" id="bypassPill" data-act="bypass"></button>
-        </div>
+      <div class="limiter-head">
+        <h3>Limiter</h3>
+        <button class="switch" id="limiterSwitch" data-act="limiter-toggle"
+                aria-label="Limiter on"></button>
+        <span class="grow"></span>
+        <span class="limiter-nums" id="limiterNums"></span>
+      </div>
+      <div class="limiter-wrap">
+        <canvas class="limiter-canvas" id="limiterCanvas"></canvas>
+        <div class="limiter-hint">drag the two lines</div>
+      </div>
+      <div class="limiter-knobs" id="limiterKnobs"></div>
 
-        <div class="band-list" id="bandList"></div>
-
-        <div class="section" style="margin-top:var(--s6)">
-          <div class="section-head">
-            <h3>Limiter</h3>
-            <button class="switch ${lim.on ? "on" : ""}" id="limiterSwitch"
-                    data-act="limiter-toggle" aria-label="Limiter on"></button>
-            <span class="grow"></span>
-            <span class="faint" id="grLabel">0.0 dB</span>
-          </div>
-          <div class="gr-meter"><i id="grBar"></i></div>
-          <div class="limiter-grid">
-            ${LIMITER_FIELDS.map(([key, label, min, max, step, unit]) => `
-              <div class="knob-row">
-                <div class="lab"><span>${label}</span><b>${Number(lim[key]).toFixed(unit === "dB" ? 1 : 0)} ${unit}</b></div>
-                <input class="range" type="range" data-lim="${key}" min="${min}" max="${max}"
-                       step="${step}" value="${lim[key]}"
-                       style="--fill:${((lim[key] - min) / (max - min)) * 100}%">
-              </div>`).join("")}
-            <div class="knob-row">
-              <div class="lab"><span>Output</span><b>${(active.data.gain || 0).toFixed(1)} dB</b></div>
-              <input class="range" type="range" data-gain min="-12" max="12" step="0.1"
-                     value="${active.data.gain || 0}"
-                     style="--fill:${(((active.data.gain || 0) + 12) / 24) * 100}%">
-            </div>
-          </div>
-        </div>
-
-        <div class="row wrap" style="margin-top:var(--s5)" id="presetActions"></div>
-
-        <p class="sound-note" id="soundNote"></p>
-      </div>`;
+      <div class="row wrap" style="margin-top:var(--s5)" id="presetActions"></div>
+      <p class="sound-note" id="soundNote"></p>`;
 
     mountEditor();
+    mountLimiter();
     renderPresets();
     renderBands();
+    renderKnobs();
     syncChrome();
   }
 
+  /* The presets, and the two things you can do to the chosen one. */
   function renderPresets() {
-    J.$("#presetPills", panel).innerHTML =
+    J.$("#presetRow", panel).innerHTML =
       presets.map((p) => `
-        <button class="sheet-tab ${p.id === active.id ? "on" : ""}" data-preset="${p.id}">
-          ${J.esc(p.name)}
-        </button>`).join("") +
-      '<button class="sheet-tab" data-act="new-preset" title="A preset to compare against">+</button>';
+        <button class="sheet-tab ${p.id === active.id ? "on" : ""}" data-preset="${p.id}"
+                title="${J.esc(p.name)}">${J.esc(p.name)}</button>`).join("")
+      + `<span class="preset-tools">
+          <button class="icon-btn tiny" data-act="rename-preset" title="Rename this preset"
+                  aria-label="Rename preset">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+            </svg>
+          </button>
+          <button class="icon-btn tiny" data-act="clone-preset" title="Copy this preset"
+                  aria-label="Copy preset">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="9" y="9" width="11" height="11" rx="2"/>
+              <path d="M5 15V5a2 2 0 0 1 2-2h10"/>
+            </svg>
+          </button>
+          <button class="icon-btn tiny" data-act="new-preset" title="A new flat preset"
+                  aria-label="New preset">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </span>`;
 
     J.$("#presetActions", panel).innerHTML = `
-      ${active.is_current ? "" : '<button class="btn sm" data-act="make-current">Use this preset by default</button>'}
-      <button class="btn ghost sm" data-act="rename-preset">Rename</button>
+      ${active.is_current ? "" : '<button class="btn ghost sm" data-act="make-current">Open with this one</button>'}
       <button class="btn ghost sm" data-act="reset">Flatten</button>
       <span class="grow"></span>
       ${presets.length > 1 ? '<button class="btn ghost sm danger" data-act="delete-preset">Delete preset</button>' : ""}`;
   }
 
-  /* Only this region is replaced when bands change. The canvas is untouched. */
+  /* Band cards, each with a knob for Q. A wheel is not available on a phone, so the knob
+   * is the only way to reach it there, and it is a better way to reach it anywhere. */
   function renderBands() {
     const list = J.$("#bandList", panel);
     if (!list) return;
@@ -142,41 +158,87 @@ J.blockSound = async function (panel, ctx) {
            data-band="${band.id}">
         <div class="head">
           <span class="kind">${J.eq.TYPE_LABEL[band.type] || band.type}</span>
-          <button class="switch ${band.on ? "on" : ""}" data-act="band-toggle"
-                  style="width:30px;height:17px" aria-label="Band on"></button>
+          <button class="switch tiny ${band.on ? "on" : ""}" data-act="band-toggle"
+                  aria-label="Band on"></button>
         </div>
-        <div class="freq">${J.eq.fmtHz(band.freq)} <span class="faint" style="font-size:11px">Hz</span></div>
-        <div class="nums">
-          <span>${J.eq.FLAT.has(band.type) ? "&mdash;" : (band.gain > 0 ? "+" : "") + band.gain.toFixed(1) + " dB"}</span>
-          <span>Q ${band.q.toFixed(2)}</span>
+        <div class="freq">${J.eq.fmtHz(band.freq)}<span class="unit">Hz</span></div>
+        <div class="band-bottom">
+          <span class="gain">${J.eq.FLAT.has(band.type) ? "&mdash;"
+            : (band.gain > 0 ? "+" : "") + band.gain.toFixed(1) + " dB"}</span>
+          <span class="q-knob" data-act="q" data-band="${band.id}" title="Drag for Q"
+                role="slider" tabindex="0" aria-label="Q"
+                aria-valuenow="${band.q.toFixed(2)}">
+            <svg viewBox="0 0 34 34" width="34" height="34">
+              <circle cx="17" cy="17" r="14" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="3"/>
+              <circle cx="17" cy="17" r="14" fill="none" stroke="var(--accent)" stroke-width="3"
+                      stroke-linecap="round" stroke-dasharray="${qArc(band.q)} 999"
+                      transform="rotate(135 17 17)"/>
+              <line x1="17" y1="17" x2="17" y2="7" stroke="var(--text)" stroke-width="2"
+                    stroke-linecap="round" transform="rotate(${qAngle(band.q)} 17 17)"/>
+            </svg>
+            <span class="q-value">${band.q.toFixed(2)}</span>
+          </span>
         </div>
         <select data-act="band-type" aria-label="Filter type">
           ${Object.keys(J.eq.TYPE_LABEL).map((type) =>
             `<option value="${type}" ${type === band.type ? "selected" : ""}>${J.eq.TYPE_LABEL[type]}</option>`).join("")}
         </select>
-        <button class="btn ghost sm danger" data-act="band-remove"
-                style="width:100%;margin-top:6px;height:26px">Remove</button>
+        <button class="btn ghost sm danger band-remove" data-act="band-remove">Remove</button>
       </div>`).join("");
     refreshReadout();
   }
 
-  /* Numbers only, while a node is being dragged. No nodes are added or removed here, so
-   * the cards stay put and the pointer keeps its target. */
+  /* Q runs 0.05 to 30 and is felt logarithmically, so the dial is too. */
+  const qFraction = (q) => J.clamp(Math.log(q / 0.05) / Math.log(30 / 0.05), 0, 1);
+  const qFromFraction = (f) => 0.05 * Math.pow(30 / 0.05, J.clamp(f, 0, 1));
+  const qArc = (q) => (qFraction(q) * 270 * Math.PI * 14) / 180;
+  const qAngle = (q) => -135 + qFraction(q) * 270;
+
   const updateBandNumbers = J.debounce(() => {
     if (!panel.isConnected) return;
     for (const band of active.data.bands || []) {
       const card = J.$(`[data-band="${band.id}"]`, panel);
       if (!card) { renderBands(); return; }
-      J.$(".freq", card).innerHTML =
-        `${J.eq.fmtHz(band.freq)} <span class="faint" style="font-size:11px">Hz</span>`;
-      const nums = J.$$(".nums span", card);
-      nums[0].innerHTML = J.eq.FLAT.has(band.type)
-        ? "&mdash;" : `${band.gain > 0 ? "+" : ""}${band.gain.toFixed(1)} dB`;
-      nums[1].textContent = `Q ${band.q.toFixed(2)}`;
+      const freq = J.$(".freq", card);
+      if (freq) freq.innerHTML = `${J.eq.fmtHz(band.freq)}<span class="unit">Hz</span>`;
+      const gain = J.$(".gain", card);
+      if (gain) {
+        gain.innerHTML = J.eq.FLAT.has(band.type) ? "&mdash;"
+          : `${band.gain > 0 ? "+" : ""}${band.gain.toFixed(1)} dB`;
+      }
+      const knob = J.$(".q-knob", card);
+      if (knob) {
+        J.$(".q-value", knob).textContent = band.q.toFixed(2);
+        const arc = knob.querySelectorAll("circle")[1];
+        const needle = knob.querySelector("line");
+        if (arc) arc.setAttribute("stroke-dasharray", `${qArc(band.q)} 999`);
+        if (needle) needle.setAttribute("transform", `rotate(${qAngle(band.q)} 17 17)`);
+        knob.setAttribute("aria-valuenow", band.q.toFixed(2));
+      }
       card.classList.toggle("on", editor && editor.selected === band.id);
       card.classList.toggle("off", !band.on);
     }
   }, 40);
+
+  function renderKnobs() {
+    const lim = active.data.limiter || {};
+    J.$("#limiterKnobs", panel).innerHTML = [
+      ["attack", "Attack", 0, 100, 1, "ms"],
+      ["release", "Release", 1, 1000, 1, "ms"],
+    ].map(([key, label, min, max, step, unit]) => `
+      <div class="knob-row">
+        <div class="lab"><span>${label}</span><b>${Number(lim[key]).toFixed(0)} ${unit}</b></div>
+        <input class="range" type="range" data-lim="${key}" min="${min}" max="${max}"
+               step="${step}" value="${lim[key]}"
+               style="--fill:${((lim[key] - min) / (max - min)) * 100}%">
+      </div>`).join("") + `
+      <div class="knob-row">
+        <div class="lab"><span>Output</span><b>${(active.data.gain || 0).toFixed(1)} dB</b></div>
+        <input class="range" type="range" data-gain min="-12" max="12" step="0.1"
+               value="${active.data.gain || 0}"
+               style="--fill:${(((active.data.gain || 0) + 12) / 24) * 100}%">
+      </div>`;
+  }
 
   function syncChrome() {
     const pill = J.$("#bypassPill", panel);
@@ -188,10 +250,10 @@ J.blockSound = async function (panel, ctx) {
     const note = J.$("#soundNote", panel);
     if (note) {
       note.textContent = "Playback only. Your uploaded render is never modified."
-        + (isLive() ? "" : " Play this song to hear these settings.");
+        + (liveSlot() ? "" : " Put this preset in A or B above to hear it.");
     }
-    const limiterSwitch = J.$("#limiterSwitch", panel);
-    if (limiterSwitch) limiterSwitch.classList.toggle("on", !!(active.data.limiter || {}).on);
+    const sw = J.$("#limiterSwitch", panel);
+    if (sw) sw.classList.toggle("on", !!(active.data.limiter || {}).on);
   }
 
   function mountEditor() {
@@ -204,8 +266,6 @@ J.blockSound = async function (panel, ctx) {
         active.data = data;
         pushToPlayer();
         save(active);
-        // The band count only changes on add and remove, and those are the only times
-        // the cards need rebuilding.
         const cards = J.$$("#bandList .band-card", panel).length;
         if (cards !== (data.bands || []).length) renderBands();
         else updateBandNumbers();
@@ -216,8 +276,41 @@ J.blockSound = async function (panel, ctx) {
     const chosen = J.$("[data-range].on", panel);
     editor.setRange(chosen ? Number(chosen.dataset.range) : 18);
     editor.start();
-    startMeter();
   }
+
+  function mountLimiter() {
+    const canvas = J.$("#limiterCanvas", panel);
+    if (!canvas) return;
+    if (limiterView) limiterView.stop();
+    limiterView = J.limiter.create(canvas, {
+      data: active.data,
+      reduction: () => {
+        const slot = liveSlot();
+        return slot ? J.audio.reductionOf(slot) : 0;
+      },
+      level: () => (liveSlot() ? J.audio.peakDb() : -60),
+      onChange: (data) => {
+        active.data = data;
+        pushToPlayer();
+        save(active);
+        showLimiterNumbers();
+      },
+    });
+    limiterView.start();
+    showLimiterNumbers();
+  }
+
+  function showLimiterNumbers() {
+    const nums = J.$("#limiterNums", panel);
+    if (!nums) return;
+    const lim = active.data.limiter || {};
+    const slot = liveSlot();
+    const reduction = slot ? J.audio.reductionOf(slot) : 0;
+    nums.innerHTML = `<span>thr <b>${Number(lim.threshold).toFixed(1)}</b></span>
+      <span>ceil <b>${Number(lim.ceiling).toFixed(1)}</b></span>
+      <span>gr <b>${reduction.toFixed(1)}</b></span>`;
+  }
+  setInterval(() => { if (panel.isConnected) showLimiterNumbers(); }, 140);
 
   function refreshReadout() {
     const readout = J.$("#eqReadout", panel);
@@ -232,24 +325,57 @@ J.blockSound = async function (panel, ctx) {
       : `<span>${bands.length} band${bands.length === 1 ? "" : "s"}</span>`;
   }
 
-  function startMeter() {
-    clearInterval(meterTimer);
-    meterTimer = setInterval(() => {
-      if (!panel.isConnected) { clearInterval(meterTimer); return; }
-      const bar = J.$("#grBar", panel);
-      const label = J.$("#grLabel", panel);
-      if (!bar) return;
-      const reduction = isLive() ? J.audio.reduction : 0;
-      bar.style.width = `${J.clamp((reduction / 12) * 100, 0, 100)}%`;
-      label.textContent = `${reduction.toFixed(1)} dB`;
-    }, 90);
-  }
+  /* Dragging a Q knob. Vertical, because that is how a knob is turned with a thumb. */
+  panel.addEventListener("pointerdown", (e) => {
+    const knob = e.target.closest(".q-knob");
+    if (!knob) return;
+    e.preventDefault();
+    const band = (active.data.bands || []).find((b) => b.id === knob.dataset.band);
+    if (!band) return;
+    const startY = e.clientY;
+    const startFraction = qFraction(band.q);
+    knob.classList.add("turning");
+    // Capture is a convenience, not a requirement: it keeps the drag alive when the
+    // pointer leaves the knob. Letting it throw here skipped the listeners below and
+    // the knob did nothing at all, so it is attempted rather than relied on.
+    try { knob.setPointerCapture(e.pointerId); } catch (err) { /* drag still works */ }
+
+    const move = (event) => {
+      const delta = (startY - event.clientY) / 140;      // 140px is the full sweep
+      band.q = Math.round(qFromFraction(startFraction + delta) * 100) / 100;
+      pushToPlayer();
+      save(active);
+      updateBandNumbers();
+      if (editor) editor.select(band.id);
+    };
+    const up = (event) => {
+      knob.classList.remove("turning");
+      try { knob.releasePointerCapture(event.pointerId); } catch (err) { /* already */ }
+      knob.removeEventListener("pointermove", move);
+      knob.removeEventListener("pointerup", up);
+      knob.removeEventListener("pointercancel", up);
+    };
+    knob.addEventListener("pointermove", move);
+    knob.addEventListener("pointerup", up);
+    knob.addEventListener("pointercancel", up);
+  });
+
+  panel.addEventListener("keydown", (e) => {
+    const knob = e.target.closest(".q-knob");
+    if (!knob) return;
+    const band = (active.data.bands || []).find((b) => b.id === knob.dataset.band);
+    if (!band) return;
+    const step = e.key === "ArrowUp" ? 0.04 : e.key === "ArrowDown" ? -0.04 : 0;
+    if (!step) return;
+    e.preventDefault();
+    band.q = Math.round(qFromFraction(qFraction(band.q) + step) * 100) / 100;
+    pushToPlayer(); save(active); updateBandNumbers();
+  });
 
   panel.addEventListener("click", async (e) => {
-    const presetPill = e.target.closest("[data-preset]");
-    if (presetPill) {
-      active = presets.find((p) => String(p.id) === presetPill.dataset.preset);
-      if (isLive()) J.player.usePreset(active);
+    const presetTab = e.target.closest("[data-preset]");
+    if (presetTab) {
+      active = presets.find((p) => String(p.id) === presetTab.dataset.preset);
       draw();
       return;
     }
@@ -286,39 +412,48 @@ J.blockSound = async function (panel, ctx) {
       const sure = await J.confirm("Flatten this preset?",
         "Every band goes and the limiter switches off.", "Flatten it");
       if (!sure) return;
-      active.data = { bands: [], limiter: Object.assign({}, active.data.limiter, { on: false }),
-                      gain: 0, bypass: false };
+      active.data = FLAT();
       pushToPlayer(); save.now(active); draw();
     }
     if (what === "make-current") {
-      await J.try(() => J.post(`/api/sound/${active.id}/current`), "Set as default");
+      await J.try(() => J.post(`/api/sound/${active.id}/current`), "This one opens first");
       await load();
     }
+
+    /* A new preset is flat and already named. Nothing to answer before it exists. */
     if (what === "new-preset") {
-      const values = await J.sheet({
-        title: "New preset", confirm: "Create",
-        sub: "It starts as a copy of the one you are on, so you can change one thing and compare.",
-        body: `<div class="sheet-fields"><label class="sheet-label">Name
-          <input class="field" name="name" placeholder="Car"></label></div>`,
-      });
-      if (!values || !values.name.trim()) return;
       const made = await J.try(() => J.post(`/api/songs/${ctx.songId}/sound`, {
-        name: values.name.trim(), copy_from: active.id }), "Preset added");
+        name: `Preset ${presets.length + 1}`, data: FLAT() }));
       if (!made) return;
       await load();
       const fresh = presets.find((p) => p.id === made.preset.id);
       if (fresh) { active = fresh; draw(); }
+      J.toast("Flat preset added");
     }
+
+    /* Copying keeps the curve and takes a new name, which is the point of copying. */
+    if (what === "clone-preset") {
+      const made = await J.try(() => J.post(`/api/songs/${ctx.songId}/sound`, {
+        name: `${active.name} copy`, copy_from: active.id }));
+      if (!made) return;
+      await load();
+      const fresh = presets.find((p) => p.id === made.preset.id);
+      if (fresh) { active = fresh; draw(); }
+      J.toast("Copied");
+    }
+
     if (what === "rename-preset") {
       const values = await J.sheet({
-        title: "Rename preset", confirm: "Save",
+        title: "Name this preset", confirm: "Save",
         body: `<div class="sheet-fields"><label class="sheet-label">Name
-          <input class="field" name="name" value="${J.esc(active.name)}"></label></div>`,
+          <input class="field" name="name" value="${J.esc(active.name)}"
+                 placeholder="Car"></label></div>`,
       });
       if (!values || !values.name.trim()) return;
-      await J.try(() => J.patch(`/api/sound/${active.id}`, { name: values.name.trim() }), "Renamed");
+      await J.try(() => J.patch(`/api/sound/${active.id}`, { name: values.name.trim() }));
       await load();
     }
+
     if (what === "delete-preset") {
       const sure = await J.confirm(`Delete “${active.name}”?`, "", "Delete it");
       if (!sure) return;
@@ -330,8 +465,7 @@ J.blockSound = async function (panel, ctx) {
   panel.addEventListener("change", (e) => {
     const select = e.target.closest("[data-act='band-type']");
     if (!select) return;
-    const card = select.closest("[data-band]");
-    editor.update(card.dataset.band, { type: select.value });
+    editor.update(select.closest("[data-band]").dataset.band, { type: select.value });
     renderBands();
   });
 
@@ -339,9 +473,8 @@ J.blockSound = async function (panel, ctx) {
     const range = e.target;
     if (range.dataset.lim) {
       active.data.limiter[range.dataset.lim] = parseFloat(range.value);
-      const unit = range.dataset.lim === "threshold" || range.dataset.lim === "ceiling" ? "dB" : "ms";
       J.$("b", range.closest(".knob-row")).textContent =
-        `${parseFloat(range.value).toFixed(unit === "dB" ? 1 : 0)} ${unit}`;
+        `${parseFloat(range.value).toFixed(0)} ms`;
       range.style.setProperty("--fill",
         `${((range.value - range.min) / (range.max - range.min)) * 100}%`);
       pushToPlayer(); save(active);

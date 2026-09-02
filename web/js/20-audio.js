@@ -1,24 +1,28 @@
 /* The playback engine.
  *
- * Two decks rather than one. Both hold a version of the same song, both play, and only
- * one is audible. Switching A to B is a gain swap on the next audio block, so you hear
- * the same bar of the other mix with no gap and no fade. That is the whole reason this
- * is not a single <audio> element.
+ * Two decks, and each one has its own processing. Both play, one of them is silent, and
+ * switching A to B is a gain swap on the next audio block: the same bar of the other
+ * take with no gap and no fade.
  *
- *   deck A ─┐
- *           ├─ chain in ─ biquad… ─ limiter ─ makeup ─ master ─ analyser ─ out
- *   deck B ─┘
+ *   deck A ─ filters… ─ limiter ─ makeup ─ gain A ─┐
+ *                                                  ├─ master ─ analyser ─ out
+ *   deck B ─ filters… ─ limiter ─ makeup ─ gain B ─┘
  *
- * The EQ and limiter are playback only. Nothing here writes to the stored file.
+ * The chains are separate rather than shared because a slot carries a preset as well as
+ * a version. Comparing the same mix through two different equalisers is as much the
+ * point as comparing two mixes, and a shared chain could not do it.
+ *
+ * None of this is written to the stored file. It is applied while the browser plays.
  */
 "use strict";
 
 J.audio = (function () {
   let ctx = null;
-  let chainIn = null, limiter = null, makeup = null, master = null, analyser = null;
-  let filters = [];
-  let settings = { bands: [], limiter: { on: false }, gain: 0, bypass: false };
+  let master = null, analyser = null;
+  let peakBuffer = null;
   const decks = {};
+
+  const FLAT = { bands: [], limiter: { on: false }, gain: 0, bypass: false };
 
   function context() {
     if (ctx) return ctx;
@@ -26,39 +30,69 @@ J.audio = (function () {
     if (!Ctor) return null;
     ctx = new Ctor();
 
-    chainIn = ctx.createGain();
-    limiter = ctx.createDynamicsCompressor();
-    makeup = ctx.createGain();
     master = ctx.createGain();
     analyser = ctx.createAnalyser();
     analyser.fftSize = 4096;
     analyser.smoothingTimeConstant = 0.78;
     analyser.minDecibels = -96;
     analyser.maxDecibels = -6;
-
-    limiter.knee.value = 0;
-    limiter.ratio.value = 20;      // a compressor this steep is a limiter in all but name
-    limiter.attack.value = 0.003;
-    limiter.release.value = 0.12;
-    limiter.threshold.value = 0;
-
-    makeup.connect(master);
     master.connect(analyser);
     analyser.connect(ctx.destination);
-    rebuild();
     return ctx;
   }
 
-  /* Rewire the filter chain. Called whenever a band is added, removed or retyped;
-   * moving an existing band only changes its parameters and does not come through here. */
-  function rebuild() {
-    if (!ctx) return;
-    filters.forEach((f) => { try { f.disconnect(); } catch (e) { /* already gone */ } });
-    try { chainIn.disconnect(); } catch (e) { /* first build */ }
-    filters = [];
+  function deck(slot) {
+    if (decks[slot]) return decks[slot];
+    const element = new Audio();
+    element.preload = "auto";
+    element.crossOrigin = "anonymous";
+    decks[slot] = {
+      element, source: null, input: null, gain: null,
+      limiter: null, makeup: null, filters: [],
+      settings: Object.assign({}, FLAT), versionId: null,
+    };
+    return decks[slot];
+  }
 
+  /* A media element can only ever be handed to one source node, so this runs once per
+   * deck and every later track just changes element.src. */
+  function wire(slot) {
+    const audioCtx = context();
+    const entry = deck(slot);
+    if (!audioCtx || entry.source) return entry;
+
+    entry.source = audioCtx.createMediaElementSource(entry.element);
+    entry.input = audioCtx.createGain();
+    entry.limiter = audioCtx.createDynamicsCompressor();
+    entry.makeup = audioCtx.createGain();
+    entry.gain = audioCtx.createGain();
+    entry.gain.gain.value = 0;
+
+    entry.limiter.knee.value = 0;
+    entry.limiter.ratio.value = 20;   // a compressor this steep is a limiter in all but name
+    entry.limiter.attack.value = 0.003;
+    entry.limiter.release.value = 0.12;
+    entry.limiter.threshold.value = 0;
+
+    entry.source.connect(entry.input);
+    entry.makeup.connect(entry.gain);
+    entry.gain.connect(master);
+    rebuild(slot);
+    return entry;
+  }
+
+  /* Rewire one deck's filters. Only when the set of bands changes; moving a node changes
+   * parameters in place so the audio never stops. */
+  function rebuild(slot) {
+    const entry = decks[slot];
+    if (!entry || !entry.input) return;
+    entry.filters.forEach((f) => { try { f.disconnect(); } catch (e) { /* gone */ } });
+    try { entry.input.disconnect(); } catch (e) { /* first build */ }
+    entry.filters = [];
+
+    const settings = entry.settings;
     if (!settings.bypass) {
-      for (const band of settings.bands) {
+      for (const band of settings.bands || []) {
         if (!band.on) continue;
         const filter = ctx.createBiquadFilter();
         filter.type = band.type;
@@ -66,54 +100,33 @@ J.audio = (function () {
         filter.Q.value = band.q;
         filter.gain.value = band.gain;
         filter._id = band.id;
-        filters.push(filter);
+        entry.filters.push(filter);
       }
     }
-
-    let node = chainIn;
-    for (const filter of filters) {
+    let node = entry.input;
+    for (const filter of entry.filters) {
       node.connect(filter);
       node = filter;
     }
-    node.connect(limiter);
-    limiter.connect(makeup);
-    applyLimiter();
+    node.connect(entry.limiter);
+    entry.limiter.connect(entry.makeup);
+    applyLimiter(slot);
   }
 
-  function applyLimiter() {
-    if (!ctx) return;
+  function applyLimiter(slot) {
+    const entry = decks[slot];
+    if (!entry || !entry.limiter) return;
+    const settings = entry.settings;
     const lim = settings.limiter || {};
     const on = lim.on && !settings.bypass;
-    limiter.threshold.value = on ? J.clamp(lim.threshold, -60, 0) : 0;
-    limiter.release.value = on ? J.clamp((lim.release || 120) / 1000, 0.001, 1) : 0.25;
-    limiter.attack.value = on ? J.clamp((lim.attack || 5) / 1000, 0, 0.1) : 0.003;
-    // The ceiling is where the output should land, so the makeup gain carries the
-    // difference between it and unity rather than the user doing that arithmetic.
+    entry.limiter.threshold.value = on ? J.clamp(lim.threshold, -60, 0) : 0;
+    entry.limiter.release.value = on ? J.clamp((lim.release || 120) / 1000, 0.001, 1) : 0.25;
+    entry.limiter.attack.value = on ? J.clamp((lim.attack || 5) / 1000, 0, 0.1) : 0.003;
+    // The ceiling is where the output should land, so the makeup carries the difference
+    // rather than the person doing that arithmetic.
     const ceiling = on ? J.clamp(lim.ceiling, -30, 0) : 0;
     const trim = settings.bypass ? 0 : (settings.gain || 0);
-    makeup.gain.value = Math.pow(10, (ceiling + trim) / 20);
-  }
-
-  function deck(name) {
-    if (decks[name]) return decks[name];
-    const element = new Audio();
-    element.preload = "auto";
-    element.crossOrigin = "anonymous";
-    const entry = { element, gain: null, source: null, versionId: null };
-    decks[name] = entry;
-    return entry;
-  }
-
-  /* A media element can only ever be given one source node, so this happens once per
-   * deck and every later track just changes element.src. */
-  function wire(entry) {
-    const audioCtx = context();
-    if (!audioCtx || entry.source) return;
-    entry.source = audioCtx.createMediaElementSource(entry.element);
-    entry.gain = audioCtx.createGain();
-    entry.gain.gain.value = 0;
-    entry.source.connect(entry.gain);
-    entry.gain.connect(chainIn);
+    entry.makeup.gain.value = Math.pow(10, (ceiling + trim) / 20);
   }
 
   return {
@@ -129,10 +142,10 @@ J.audio = (function () {
       return audioCtx;
     },
 
-    /* Fade a deck in or out over a few milliseconds. Not a crossfade: the ramp is short
-     * enough to be inaudible and only exists to avoid the click a hard gain step makes. */
-    setDeckGain(name, value, seconds) {
-      const entry = decks[name];
+    /* A few milliseconds of ramp: short enough to be inaudible, long enough that the
+     * gain step does not click. */
+    setDeckGain(slot, value, seconds) {
+      const entry = decks[slot];
       if (!entry || !entry.gain || !ctx) return;
       const now = ctx.currentTime;
       entry.gain.gain.cancelScheduledValues(now);
@@ -141,38 +154,36 @@ J.audio = (function () {
     },
 
     setVolume(value) {
-      const audioCtx = context();
-      if (audioCtx) master.gain.value = J.clamp(value, 0, 1);
+      if (context()) master.gain.value = J.clamp(value, 0, 1);
     },
 
-    apply(next) {
-      const before = JSON.stringify((settings.bands || []).map((b) => [b.id, b.type, b.on]));
-      settings = Object.assign({ bands: [], limiter: {}, gain: 0, bypass: false }, next || {});
-      const after = JSON.stringify((settings.bands || []).map((b) => [b.id, b.type, b.on]));
-      if (!ctx) return;
-      if (before !== after) {
-        rebuild();
-        return;
-      }
-      // Same set of bands, so only the numbers moved. Setting parameters in place keeps
-      // the audio running while a node is dragged.
-      for (const band of settings.bands) {
-        const filter = filters.find((f) => f._id === band.id);
+    /* Give one deck its sound. Called when a slot's preset changes and while a curve is
+     * being dragged, so it has to be cheap when only numbers moved. */
+    applyTo(slot, next) {
+      const entry = deck(slot);
+      const before = JSON.stringify((entry.settings.bands || []).map((b) => [b.id, b.type, b.on]));
+      entry.settings = Object.assign({}, FLAT, next || {});
+      const after = JSON.stringify((entry.settings.bands || []).map((b) => [b.id, b.type, b.on]));
+      if (!ctx || !entry.input) return;
+      if (before !== after) { rebuild(slot); return; }
+      for (const band of entry.settings.bands || []) {
+        const filter = entry.filters.find((f) => f._id === band.id);
         if (!filter) continue;
         filter.frequency.value = J.clamp(band.freq, 10, ctx.sampleRate / 2 - 100);
         filter.Q.value = band.q;
         filter.gain.value = band.gain;
       }
-      applyLimiter();
+      applyLimiter(slot);
     },
 
-    get settings() { return settings; },
+    settingsOf(slot) {
+      return (decks[slot] && decks[slot].settings) || Object.assign({}, FLAT);
+    },
 
     /* Magnitude in dB of an arbitrary set of bands, at the given frequencies.
      *
-     * The filters made here are never connected to anything, so this computes the curve
-     * for a song that is not playing without disturbing the song that is. That matters:
-     * the sound panel is reachable for any song while another one sounds. */
+     * The filters made here are never connected, so a curve can be drawn for a song that
+     * is not playing without disturbing the one that is. */
     responseOf(bands, frequencies, bypass) {
       const audioCtx = context();
       const out = new Float32Array(frequencies.length);
@@ -195,15 +206,34 @@ J.audio = (function () {
       return out;
     },
 
-    /* How much the limiter is pulling down, in dB, for the meter. */
-    get reduction() {
-      return limiter ? Math.abs(limiter.reduction || 0) : 0;
+    /* How hard this deck's limiter is pulling down, in dB. */
+    reductionOf(slot) {
+      const entry = decks[slot];
+      return entry && entry.limiter ? Math.abs(entry.limiter.reduction || 0) : 0;
     },
 
     spectrum(target) {
       if (!analyser) return null;
       analyser.getByteFrequencyData(target);
       return target;
+    },
+
+    /* Peak output level in dB, for the limiter's meter.
+     *
+     * Read from the waveform rather than the spectrum: a frequency bin says how much of
+     * one band is present, and a meter is asking how loud the whole thing is. */
+    peakDb() {
+      if (!analyser) return -60;
+      if (!peakBuffer || peakBuffer.length !== analyser.fftSize) {
+        peakBuffer = new Uint8Array(analyser.fftSize);
+      }
+      analyser.getByteTimeDomainData(peakBuffer);
+      let peak = 0;
+      for (let i = 0; i < peakBuffer.length; i++) {
+        const sample = Math.abs(peakBuffer[i] - 128) / 128;
+        if (sample > peak) peak = sample;
+      }
+      return peak > 0.0002 ? 20 * Math.log10(peak) : -60;
     },
   };
 })();

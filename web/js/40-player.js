@@ -1,86 +1,84 @@
 /* The player.
  *
- * Both decks run at once whenever two versions are loaded, one of them silent. That
- * costs a second stream from a server sitting on the same machine and buys a switch
- * between mixes with no gap, which is the point of the whole feature.
+ * A slot is a version and a preset together, because that is what you actually compare:
+ * this mix through this equaliser against that mix through that one. Both decks run at
+ * once with one silent, so switching is a gain swap and the playhead never moves.
  */
 "use strict";
 
 J.player = (function () {
   const state = {
     song: null,
-    queue: [],          // songs, for next and previous
+    queue: [],
     index: -1,
-    slots: { A: null, B: null },   // version objects
+    slots: { A: { version: null, preset: null }, B: { version: null, preset: null } },
+    presets: [],
     active: "A",
     playing: false,
     duration: 0,
     position: 0,
     volume: 0.9,
-    sound: null,        // the preset in force
-    presetId: null,
   };
 
   let ticking = null;
   let seeking = false;
 
   const el = () => J.$("#player");
-  const deckOf = (slot) => J.audio.deck(slot);
-  const activeAudio = () => deckOf(state.active).element;
-
-  function otherSlot() { return state.active === "A" ? "B" : "A"; }
+  const audioOf = (slot) => J.audio.deck(slot).element;
+  const activeAudio = () => audioOf(state.active);
+  const other = () => (state.active === "A" ? "B" : "A");
 
   async function ensureContext() {
     await J.audio.resume();
-    ["A", "B"].forEach((slot) => J.audio.wire(deckOf(slot)));
+    ["A", "B"].forEach((slot) => J.audio.wire(slot));
     J.audio.setVolume(state.volume);
   }
 
-  function srcFor(version) {
-    return version ? `/api/versions/${version.id}/audio` : "";
-  }
-
-  async function loadSlot(slot, version) {
-    state.slots[slot] = version || null;
-    const deck = deckOf(slot);
-    const wanted = srcFor(version);
-    if (!wanted) {
+  async function loadVersion(slot, version) {
+    state.slots[slot].version = version || null;
+    const deck = J.audio.deck(slot);
+    if (!version) {
       deck.element.removeAttribute("src");
       deck.element.load();
+      deck.versionId = null;
       return;
     }
-    if (deck.versionId !== (version && version.id)) {
+    if (deck.versionId !== version.id) {
       deck.versionId = version.id;
-      deck.element.src = wanted;
+      deck.element.src = `/api/versions/${version.id}/audio`;
       deck.element.load();
     }
+  }
+
+  function applyPreset(slot, preset) {
+    state.slots[slot].preset = preset || null;
+    J.audio.applyTo(slot, preset ? preset.data : null);
   }
 
   function applyGains() {
     ["A", "B"].forEach((slot) => {
-      J.audio.setDeckGain(slot, slot === state.active && state.slots[slot] ? 1 : 0);
+      J.audio.setDeckGain(slot, slot === state.active && state.slots[slot].version ? 1 : 0);
     });
   }
 
   async function startBoth() {
     const jobs = [];
     ["A", "B"].forEach((slot) => {
-      if (!state.slots[slot]) return;
-      const audio = deckOf(slot).element;
-      jobs.push(audio.play().catch(() => { /* autoplay refusal, handled by the button */ }));
+      if (!state.slots[slot].version) return;
+      jobs.push(audioOf(slot).play().catch(() => { /* autoplay refusal */ }));
     });
     await Promise.all(jobs);
   }
 
   function pauseBoth() {
-    ["A", "B"].forEach((slot) => { deckOf(slot).element.pause(); });
+    ["A", "B"].forEach((slot) => audioOf(slot).pause());
   }
 
   function syncOther() {
-    const other = otherSlot();
-    if (!state.slots[other]) return;
+    const slot = other();
+    if (!state.slots[slot].version) return;
     const from = activeAudio();
-    const to = deckOf(other).element;
+    const to = audioOf(slot);
     if (Math.abs(to.currentTime - from.currentTime) > 0.05) to.currentTime = from.currentTime;
   }
 
@@ -91,31 +89,25 @@ J.player = (function () {
     if (audio.duration && Number.isFinite(audio.duration)) state.duration = audio.duration;
     paint();
   }
+  const startTicking = () => { if (!ticking) tick(); };
+  const stopTicking = () => { if (ticking) { cancelAnimationFrame(ticking); ticking = null; } };
 
-  function startTicking() { if (!ticking) tick(); }
-  function stopTicking() { if (ticking) { cancelAnimationFrame(ticking); ticking = null; } }
-
-  // ── painting ──────────────────────────────────────────────────────────────
   function paint() {
     const node = el();
     if (!node || node.hidden) return;
     const pct = state.duration ? (state.position / state.duration) * 100 : 0;
-    const fill = J.$(".bar .fill", node);
-    const knob = J.$(".bar .knob", node);
-    const now = J.$(".scrubber .now", node);
-    if (fill) fill.style.width = `${pct}%`;
-    if (knob) knob.style.left = `${pct}%`;
-    if (now) now.textContent = J.time(state.position);
-    const total = J.$(".scrubber .total", node);
-    if (total) total.textContent = J.time(state.duration);
-    const buffered = J.$(".bar .buffered", node);
-    if (buffered) {
+    const set = (sel, fn) => { const n = J.$(sel, node); if (n) fn(n); };
+    set(".bar .fill", (n) => { n.style.width = `${pct}%`; });
+    set(".bar .knob", (n) => { n.style.left = `${pct}%`; });
+    set(".scrubber .now", (n) => { n.textContent = J.time(state.position); });
+    set(".scrubber .total", (n) => { n.textContent = J.time(state.duration); });
+    set(".bar .buffered", (n) => {
       const audio = activeAudio();
       let end = 0;
       try { if (audio.buffered.length) end = audio.buffered.end(audio.buffered.length - 1); }
       catch (e) { end = 0; }
-      buffered.style.width = state.duration ? `${(end / state.duration) * 100}%` : "0%";
-    }
+      n.style.width = state.duration ? `${(end / state.duration) * 100}%` : "0%";
+    });
   }
 
   function render() {
@@ -124,9 +116,10 @@ J.player = (function () {
     if (!state.song) { node.hidden = true; return; }
     node.hidden = false;
 
-    const version = state.slots[state.active];
+    const slot = state.slots[state.active];
+    const version = slot.version;
     const art = state.song.artwork_id ? `/api/artwork/${state.song.artwork_id}/image` : null;
-    const hasB = !!state.slots.B;
+    const hasB = !!state.slots.B.version;
 
     node.innerHTML = `
       <div class="now-playing">
@@ -134,7 +127,7 @@ J.player = (function () {
         <div class="truncate">
           <div class="t truncate"><a href="#/song/${state.song.id}" data-link>${J.esc(state.song.title)}</a></div>
           <div class="s truncate">${version ? `v${version.n}` : "no version"}${
-            version && version.label ? ` &middot; ${J.esc(version.label)}` : ""}</div>
+            slot.preset ? ` &middot; ${J.esc(slot.preset.name)}` : ""}</div>
         </div>
       </div>
 
@@ -163,10 +156,10 @@ J.player = (function () {
       </div>
 
       <div class="player-right">
-        <div class="ab-chips" title="Compare two versions. Press X to swap.">
+        <div class="ab-chips" title="Compare two takes. Press X to swap.">
           <button class="ab-chip ${state.active === "A" ? "on" : ""}" data-act="slot" data-slot="A">A</button>
           <button class="ab-chip ${state.active === "B" ? "on" : ""}" data-act="slot" data-slot="B"
-                  ${hasB ? "" : "disabled title='Pick a second version on the song page'"}>B</button>
+                  ${hasB ? "" : "disabled title='Set a B on the song page'"}>B</button>
         </div>
         <div class="volume">
           <button class="icon-btn" data-act="mute" aria-label="Mute">
@@ -176,29 +169,26 @@ J.player = (function () {
           <input class="range" type="range" min="0" max="1" step="0.01" value="${state.volume}"
                  aria-label="Volume" data-act="volume" style="--fill:${state.volume * 100}%">
         </div>
-        <button class="icon-btn" data-act="expand" title="Compare versions" aria-label="Expand player">
-          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M8 14l-4 4m0 0h4m-4 0v-4M16 10l4-4m0 0h-4m4 0v4" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
       </div>`;
     paint();
   }
 
-  // ── public ────────────────────────────────────────────────────────────────
   const api = {
     get state() { return state; },
 
     async play(song, version, queue) {
       await ensureContext();
-      const changedSong = !state.song || state.song.id !== song.id;
+      const changed = !state.song || state.song.id !== song.id;
       state.song = song;
       if (queue) { state.queue = queue; state.index = queue.findIndex((s) => s.id === song.id); }
-      if (changedSong) {
-        state.slots.B = null;
-        await loadSlot("B", null);
-        await api.loadSound(song.id);
+      if (changed) {
+        state.slots.B = { version: null, preset: null };
+        await loadVersion("B", null);
+        await api.loadPresets(song.id);
       }
       state.active = "A";
-      await loadSlot("A", version);
+      await loadVersion("A", version);
+      applyPreset("A", state.slots.A.preset || defaultPreset());
       applyGains();
       await startBoth();
       state.playing = true;
@@ -207,54 +197,43 @@ J.player = (function () {
       J.emit("player:change");
     },
 
-    async loadSound(songId) {
+    defaultPreset,
+
+    async loadPresets(songId) {
       try {
         const data = await J.get(`/api/songs/${songId}/sound`);
-        const presets = data.presets || [];
-        const current = presets.find((p) => p.is_current) || presets[0];
-        state.sound = current ? current.data : null;
-        state.presetId = current ? current.id : null;
-        if (state.sound) J.audio.apply(state.sound);
-        else J.audio.apply({ bands: [], limiter: { on: false }, gain: 0 });
+        state.presets = data.presets || [];
       } catch (e) {
-        // Sound is optional. A song still plays flat if the module is switched off.
-        state.sound = null;
-        J.audio.apply({ bands: [], limiter: { on: false }, gain: 0 });
+        state.presets = [];   // sound is optional; a song still plays flat without it
       }
+      const chosen = defaultPreset();
+      applyPreset("A", chosen);
+      applyPreset("B", chosen);
       J.emit("sound:change");
     },
 
-    usePreset(preset) {
-      state.sound = preset ? preset.data : null;
-      state.presetId = preset ? preset.id : null;
-      J.audio.apply(state.sound || { bands: [], limiter: { on: false }, gain: 0 });
-      J.emit("sound:change");
-    },
-
-    applySound(data) {
-      state.sound = data;
-      J.audio.apply(data);
-    },
-
-    async assign(slot, version) {
+    /* Give one slot a version, a preset, or both. */
+    async set(slot, what) {
       await ensureContext();
-      await loadSlot(slot, version);
-      const audio = deckOf(slot).element;
-      // Line the new deck up with where the music already is, so choosing a B while
-      // something is playing does not restart it.
-      const from = activeAudio();
-      const at = from.currentTime || 0;
-      const place = () => { try { audio.currentTime = at; } catch (e) { /* not seekable yet */ } };
-      if (audio.readyState >= 1) place();
-      else audio.addEventListener("loadedmetadata", place, { once: true });
-      if (state.playing) await audio.play().catch(() => {});
+      if (what.preset !== undefined) applyPreset(slot, what.preset);
+      if (what.version !== undefined) {
+        await loadVersion(slot, what.version);
+        // Line the deck up with where the music already is, so choosing a B while
+        // something plays does not restart it.
+        const audio = audioOf(slot);
+        const at = activeAudio().currentTime || 0;
+        const place = () => { try { audio.currentTime = at; } catch (e) { /* not seekable */ } };
+        if (audio.readyState >= 1) place();
+        else audio.addEventListener("loadedmetadata", place, { once: true });
+        if (state.playing) await audio.play().catch(() => {});
+      }
       applyGains();
       render();
       J.emit("player:change");
     },
 
     async switchTo(slot) {
-      if (!state.slots[slot] || slot === state.active) return;
+      if (!state.slots[slot].version || slot === state.active) return;
       syncOther();
       state.active = slot;
       applyGains();
@@ -265,8 +244,21 @@ J.player = (function () {
     },
 
     swap() {
-      const other = otherSlot();
-      if (state.slots[other]) api.switchTo(other);
+      const to = other();
+      if (state.slots[to].version) api.switchTo(to);
+    },
+
+    /* An edit to a preset reaches whichever slots are using it, and nothing else. */
+    presetEdited(presetId, data) {
+      for (const slot of ["A", "B"]) {
+        const preset = state.slots[slot].preset;
+        if (preset && preset.id === presetId) {
+          preset.data = data;
+          J.audio.applyTo(slot, data);
+        }
+      }
+      const known = state.presets.find((p) => p.id === presetId);
+      if (known) known.data = data;
     },
 
     async toggle() {
@@ -291,9 +283,9 @@ J.player = (function () {
       const at = J.clamp(fraction, 0, 1) * state.duration;
       audio.currentTime = at;
       state.position = at;
-      const other = otherSlot();
-      if (state.slots[other]) {
-        try { deckOf(other).element.currentTime = at; } catch (e) { /* not ready */ }
+      const slot = other();
+      if (state.slots[slot].version) {
+        try { audioOf(slot).currentTime = at; } catch (e) { /* not ready */ }
       }
       paint();
     },
@@ -307,15 +299,17 @@ J.player = (function () {
       if (!state.queue.length) return;
       const next = state.index + delta;
       if (next < 0 || next >= state.queue.length) return;
-      const song = state.queue[next];
       state.index = next;
-      J.playSong(song, state.queue);
+      J.playSong(state.queue[next], state.queue);
     },
 
     render,
   };
 
-  /* Wiring the bar once. The markup is replaced often, so every handler is delegated. */
+  function defaultPreset() {
+    return state.presets.find((p) => p.is_current) || state.presets[0] || null;
+  }
+
   J.on("boot", () => {
     const node = el();
     node.addEventListener("click", async (e) => {
@@ -324,16 +318,9 @@ J.player = (function () {
       const act = hit.dataset.act;
       if (act === "toggle") api.toggle();
       if (act === "next") api.step(1);
-      if (act === "prev") {
-        if (state.position > 3) api.seek(0);
-        else api.step(-1);
-      }
+      if (act === "prev") { if (state.position > 3) api.seek(0); else api.step(-1); }
       if (act === "slot") api.switchTo(hit.dataset.slot);
-      if (act === "mute") {
-        api.setVolume(state.volume > 0 ? 0 : 0.9);
-        render();
-      }
-      if (act === "expand") J.stage.open();
+      if (act === "mute") { api.setVolume(state.volume > 0 ? 0 : 0.9); render(); }
     });
 
     node.addEventListener("input", (e) => {
@@ -343,7 +330,6 @@ J.player = (function () {
       hit.style.setProperty("--fill", `${hit.value * 100}%`);
     });
 
-    /* Dragging the scrubber: pointer capture so it keeps following outside the bar. */
     node.addEventListener("pointerdown", (e) => {
       const bar = e.target.closest("[data-act='seek']");
       if (!bar) return;
@@ -371,7 +357,7 @@ J.player = (function () {
     });
 
     ["A", "B"].forEach((slot) => {
-      const audio = deckOf(slot).element;
+      const audio = J.audio.deck(slot).element;
       audio.addEventListener("ended", () => {
         if (slot !== state.active) return;
         state.playing = false;
@@ -380,13 +366,13 @@ J.player = (function () {
         api.step(1);
       });
       audio.addEventListener("error", () => {
-        if (slot === state.active && state.slots[slot]) {
+        if (slot === state.active && state.slots[slot].version) {
           J.toast("That version would not play. The file may be missing.", "bad");
         }
       });
       /* The server cannot always work out a duration, so the browser tells it once. */
       audio.addEventListener("loadedmetadata", async () => {
-        const version = state.slots[slot];
+        const version = state.slots[slot].version;
         if (!version || !Number.isFinite(audio.duration)) return;
         if (Math.abs((version.duration || 0) - audio.duration) < 0.6) return;
         version.duration = audio.duration;
@@ -402,7 +388,7 @@ J.player = (function () {
 /* Play a song at its current version, which is what clicking a row means everywhere. */
 J.playSong = async function (song, queue) {
   const same = J.player.state.song && J.player.state.song.id === song.id;
-  if (same && J.player.state.slots.A) return J.player.toggle();
+  if (same && J.player.state.slots.A.version) return J.player.toggle();
   const data = await J.try(() => J.get(`/api/songs/${song.id}/versions`));
   if (!data) return;
   const versions = data.versions || [];

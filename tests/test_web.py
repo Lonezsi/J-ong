@@ -105,7 +105,16 @@ def test_the_eq_reads_the_response_without_touching_playback():
 
     with open(os.path.join(JS_DIR, "66-panel-sound.js"), encoding="utf-8") as f:
         panel = f.read()
-    assert "isLive()" in panel, "edits are pushed to the player regardless of what is playing"
+    # An edit goes through the player, which hands it only to the decks actually holding
+    # this preset. Applying it to the audio graph directly would change whatever else was
+    # playing, including another song.
+    assert "presetEdited" in panel, "the sound panel writes to the audio graph directly"
+    assert "J.audio.applyTo" not in panel, "the panel reaches past the player into a deck"
+
+    with open(os.path.join(JS_DIR, "40-player.js"), encoding="utf-8") as f:
+        player = f.read()
+    body = player.split("presetEdited(presetId, data) {", 1)[1].split("\n    },", 1)[0]
+    assert "preset.id === presetId" in body, "an edit is applied to slots that do not hold it"
 
 
 def test_adding_a_band_does_not_rebuild_the_canvas():
@@ -130,9 +139,15 @@ def test_the_page_links_what_the_server_bundles():
     with open(os.path.join(WEB, "index.html"), encoding="utf-8") as f:
         page = f.read()
     assert '"/jong.css"' in page and '"/jong.js"' in page
-    assert "fonts.googleapis.com" in page, "the typefaces are never fetched"
-    for family in ("Syne", "Manrope"):
-        assert family in page
+    # The stylesheet link itself, not merely a mention. This assertion used to pass on a
+    # comment describing a typeface the page had stopped loading, which is a test that
+    # cannot fail: deleting the link entirely would not have moved it.
+    # The css2 request specifically. A preconnect hint to the same host is not a request
+    # for a typeface, and matching it made this pass while loading nothing.
+    link = re.search(r'<link[^>]+fonts\.googleapis\.com/css2\?[^>]*>', page)
+    assert link, "the typefaces are never fetched"
+    for family in ("Orbitron", "Manrope"):
+        assert "family=" + family in link.group(0), "%s is not requested" % family
 
 
 def test_the_bundles_are_not_empty():

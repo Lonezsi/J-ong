@@ -244,11 +244,20 @@ def _cookie_header(req, value, days):
 
 # ── endpoints ────────────────────────────────────────────────────────────────
 def state(req):
-    return {
+    answer = {
         "has_password": has_password(),
         "signed_in": signed_in(req.headers),
         "locked_for": _wait_for(_who(req)),
+        "custom_font": False,
     }
+    # The door wears the same face as the library, and this is the only call it is
+    # allowed to make before signing in. Asking the font endpoint directly meant a 404
+    # in the console every time nobody had uploaded one.
+    from .. import registry
+    if registry.has("appearance"):
+        from . import appearance
+        answer["custom_font"] = appearance.state().get("custom_font", False)
+    return answer
 
 
 def setup(req):

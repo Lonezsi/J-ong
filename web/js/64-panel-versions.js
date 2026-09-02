@@ -63,9 +63,11 @@ J.blockVersions = async function (panel, ctx) {
               <div class="version-row ${v.id === currentId ? "current" : ""}" data-version="${v.id}">
                 <span class="n">v${v.n}${slot ? ` <span class="tag accent">${slot}</span>` : ""}</span>
                 <span class="truncate">
-                  ${v.label ? `<span>${J.esc(v.label)}</span>` : '<span class="faint">no label</span>'}
+                  <span class="og-name truncate" title="${J.esc(v.filename || "")}">${
+                    J.esc(v.filename || "no filename recorded")}</span>
                   ${v.id === currentId ? '<span class="tag" style="margin-left:6px">current</span>' : ""}
-                  <div class="faint" style="font-size:11.5px">${J.esc(v.filename || "")} &middot; ${J.bytes(v.size)}${
+                  ${v.label ? `<span class="tag" style="margin-left:6px">${J.esc(v.label)}</span>` : ""}
+                  <div class="faint" style="font-size:11.5px">${J.bytes(v.size)}${
                     v.bitrate ? " &middot; " + v.bitrate + " kbps" : ""}</div>
                 </span>
                 <span class="when">${J.when(v.created_at)}</span>

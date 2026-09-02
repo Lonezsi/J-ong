@@ -189,50 +189,178 @@
 .block-tools { display: flex; align-items: center; gap: var(--s2); opacity: 0; transition: opacity var(--fast); }
 .block:hover .block-tools, .block:focus-within .block-tools { opacity: 1; }
 
-/* ── lyrics ───────────────────────────────────────────────────────────────── */
-/* The words are the control. Click them and they become editable in place. */
-.lyrics {
-  font-size: 17px;
-  line-height: 1.9;
-  max-width: 56ch;
-  white-space: pre-wrap;
+/* ── A and B, in the header ───────────────────────────────────────────────── */
+.ab-inline { display: flex; align-items: stretch; gap: var(--s2); flex-wrap: wrap; }
+.slot-pick {
+  position: relative;
+  display: inline-flex; align-items: center; gap: var(--s2);
+  min-width: 148px;
+  padding: 7px var(--s3) 7px var(--s2);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text);
-  min-height: 72px;
-  padding: var(--s3);
-  margin: calc(var(--s3) * -1);
-  border-radius: var(--r-md);
-  cursor: text;
-  transition: background var(--fast);
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--fast), border-color var(--fast);
 }
-.lyrics:hover { background: rgba(255, 255, 255, 0.035); }
-.lyrics.empty-words { color: var(--text-3); font-style: italic; }
-.lyrics.reading { cursor: default; opacity: 0.85; }
+.slot-pick:hover { background: rgba(255, 255, 255, 0.12); }
+.slot-pick .k {
+  display: grid; place-items: center;
+  width: 22px; height: 22px; flex: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  font-family: var(--display); font-weight: 800; font-size: 11px;
+}
+.slot-pick .v { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slot-pick .caret { opacity: 0.45; flex: none; }
+/* The side you are actually hearing. */
+.slot-pick.live { border-color: var(--accent); background: var(--accent-soft); }
+.slot-pick.live .k { background: var(--accent); color: var(--text-on-accent); }
 
-textarea.lyrics-edit {
-  font-size: 17px; line-height: 1.9;
-  max-width: 56ch; width: 100%;
-  min-height: 320px;
+.ab-switch {
+  display: grid; place-items: center;
+  width: 40px; flex: none;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast), transform var(--fast);
+}
+.ab-switch:hover { background: var(--accent-soft); color: var(--accent-hi); }
+.ab-switch:active { transform: scale(0.94); }
+
+/* One menu for both things a slot carries. */
+.slot-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
+  min-width: 260px; max-height: 320px; overflow-y: auto;
+  background: var(--elevated);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-3);
+  padding: var(--s2);
+  animation: pop 140ms var(--ease);
+  cursor: default;
+}
+.menu-group {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-3); padding: var(--s3) var(--s3) var(--s2);
+}
+.menu-row {
+  display: flex; align-items: center; gap: var(--s3); width: 100%;
+  padding: 7px var(--s3);
+  border: 0; border-radius: var(--r-sm);
+  background: none; color: var(--text-2);
+  font-size: 13px; text-align: left; cursor: pointer;
+  transition: background var(--fast), color var(--fast);
+}
+.menu-row:hover { background: var(--hover); color: var(--text); }
+.menu-row.on { background: var(--accent-soft); color: var(--accent-hi); }
+.menu-row .tagline {
+  font-family: var(--display); font-weight: 800; font-size: 12px;
+  min-width: 30px; flex: none;
+}
+.menu-row .grow { flex: 1; min-width: 0; }
+.menu-row .when { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+
+/* ── lyrics, as cards you move between ───────────────────────────────────── */
+.lyric-deck {
+  display: flex; align-items: center; gap: var(--s3);
+  justify-content: center;
+}
+.deck-window {
+  flex: 1;
+  max-width: 640px;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  touch-action: pan-y;          /* vertical scrolling still belongs to the page */
+}
+.deck-track { display: flex; will-change: transform; }
+
+.lyric-card {
+  flex: 0 0 100%;
+  min-width: 100%;
+  padding: var(--s6);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  opacity: 0.55;
+  transform: scale(0.985);
+  transition: opacity var(--med), transform var(--med);
+}
+.lyric-card.on { opacity: 1; transform: none; }
+.lyric-card.reading { border-color: rgba(217, 164, 65, 0.4); }
+.lyric-card.editing { opacity: 1; transform: none; }
+
+.card-title {
+  font-family: var(--display);
+  font-size: 22px; font-weight: 800; letter-spacing: -0.02em;
+  margin: 0 0 var(--s4);
+  color: var(--text);
+}
+.card-body {
+  font-size: 16.5px; line-height: 1.85;
+  color: var(--text);
+  min-height: 120px;
+  cursor: text;
+  border-radius: var(--r-sm);
+}
+.card-body.empty-words { color: var(--text-3); font-style: italic; }
+
+/* Markdown output. Every line is a line: a verse is not a paragraph to be reflowed. */
+.md-line { min-height: 1.85em; }
+.md-gap { height: 0.9em; }
+.card-body h1, .card-body h2, .card-body h3,
+.card-body h4, .card-body h5, .card-body h6 {
+  font-family: var(--display); font-weight: 700; letter-spacing: -0.01em;
+  margin: var(--s4) 0 var(--s2); font-size: 17px; color: var(--text);
+}
+.card-body ul, .card-body ol { margin: var(--s2) 0; padding-left: var(--s5); }
+.card-body blockquote {
+  margin: var(--s3) 0; padding-left: var(--s4);
+  border-left: 2px solid var(--accent-line); color: var(--text-2);
+}
+.card-body blockquote p { margin: 0; }
+.card-body hr { border: 0; border-top: 1px solid var(--line-2); margin: var(--s4) 0; }
+.card-body code {
+  font-size: 0.9em; background: var(--bg); padding: 1px 5px; border-radius: var(--r-sm);
+}
+.card-body a { color: var(--accent-hi); text-decoration: underline; }
+
+textarea.card-edit {
+  width: 100%; min-height: 340px;
+  font: inherit; font-size: 16px; line-height: 1.85;
   background: var(--bg);
   border: 1px solid var(--accent-line);
   border-radius: var(--r-md);
-  padding: var(--s3);
+  padding: var(--s4);
   color: var(--text);
-  outline: none;
-  resize: vertical;
+  outline: none; resize: vertical;
 }
+.card-foot { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s3); }
 
-.sheet-tabs { display: flex; align-items: center; gap: var(--s1); }
-.sheet-tab {
-  background: none; border: 0;
-  color: var(--text-3);
-  font-size: 13px; font-weight: 600;
-  padding: 4px var(--s3);
-  border-radius: var(--r-pill);
+.deck-arrow {
+  display: grid; place-items: center;
+  width: 40px; height: 40px; flex: none;
+  border: 1px solid var(--line-2); border-radius: 50%;
+  background: var(--surface-2); color: var(--text-2);
   cursor: pointer;
-  transition: color var(--fast), background var(--fast);
+  transition: background var(--fast), color var(--fast), opacity var(--fast);
 }
-.sheet-tab:hover { color: var(--text); background: var(--hover); }
-.sheet-tab.on { color: var(--accent-hi); background: var(--accent-soft); }
+.deck-arrow:hover { background: var(--elevated); color: var(--text); }
+.deck-arrow[disabled] { opacity: 0.25; cursor: default; }
+
+.deck-dots { display: flex; justify-content: center; gap: 6px; margin-top: var(--s4); }
+.deck-dot {
+  width: 7px; height: 7px; padding: 0;
+  border: 0; border-radius: 50%;
+  background: var(--line-2);
+  cursor: pointer;
+  transition: background var(--fast), width var(--fast);
+}
+.deck-dot.on { background: var(--accent); width: 22px; border-radius: var(--r-pill); }
 
 /* Looking at an old version is looking, not restoring. */
 .time-bar {
@@ -246,14 +374,17 @@ textarea.lyrics-edit {
 }
 .time-bar .grow { flex: 1; }
 
-.history-rail { display: flex; flex-direction: column; gap: 1px; max-height: 320px; overflow-y: auto; }
+.history-rail {
+  display: flex; flex-direction: column; gap: 1px;
+  max-height: 300px; overflow-y: auto;
+  max-width: 640px; margin: var(--s5) auto 0;
+}
 .history-entry {
   display: flex; align-items: center; gap: var(--s3);
   padding: 7px var(--s3);
   border-radius: var(--r-sm);
   cursor: pointer;
-  font-size: 13px;
-  color: var(--text-2);
+  font-size: 13px; color: var(--text-2);
   transition: background var(--fast), color var(--fast);
 }
 .history-entry:hover { background: var(--hover); color: var(--text); }
@@ -297,6 +428,9 @@ textarea.lyrics-edit {
 .version-row:hover { background: var(--hover); }
 .version-row.current { background: var(--accent-soft); }
 .version-row .n { font-family: var(--display); font-weight: 800; font-size: 15px; }
+/* The name the file arrived under. Six renders later it is often the only thing
+   that says which session it came out of, so it is the line, not a footnote. */
+.version-row .og-name { display: block; font-size: 13.5px; color: var(--text); }
 .version-row.current .n { color: var(--accent-hi); }
 .version-row .when, .version-row .dur { font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .version-row .acts { display: flex; gap: var(--s1); opacity: 0; transition: opacity var(--fast); }
@@ -328,9 +462,44 @@ textarea.lyrics-edit {
 }
 .art-add:hover { border-color: var(--accent); color: var(--accent-hi); }
 
+/* ── phone ────────────────────────────────────────────────────────────────── */
 @media (max-width: 720px) {
-  .hero { padding-top: var(--s6); }
+  .hero { padding: var(--s6) var(--s4) var(--s5); margin-inline: calc(var(--s4) * -1); }
   .hero-row { flex-direction: column; align-items: flex-start; gap: var(--s4); }
-  .version-row { grid-template-columns: 54px 1fr auto; }
+  .cover-edit { width: 132px; }
+  .song-title { font-size: clamp(30px, 11vw, 46px); }
+  .song-title-input { font-size: clamp(30px, 11vw, 46px); }
+
+  /* A and B go full width and stack, so neither is a squeezed chip. */
+  .ab-inline { width: 100%; display: grid; grid-template-columns: 1fr auto 1fr; }
+  .slot-pick { min-width: 0; }
+  .slot-menu { left: 0; right: auto; min-width: min(280px, 84vw); }
+  .slot-pick[data-slot="B"] .slot-menu { left: auto; right: 0; }
+
+  .block { margin-bottom: var(--s7); }
+  /* Nothing to hover with on a phone, so the tools are always shown, and they take
+     their own line rather than running off the edge of the screen. */
+  .block-head { flex-wrap: wrap; }
+  .block-tools { opacity: 1; width: 100%; flex-wrap: wrap; }
+  .block-head .grow { display: none; }
+  .preset-row { width: 100%; }
+
+  /* The deck fills the width and the arrows step aside for the swipe. */
+  .deck-arrow { display: none; }
+  .deck-window { max-width: none; }
+  .lyric-card { padding: var(--s4); }
+  .card-title { font-size: 19px; }
+  .card-body { font-size: 16px; }
+  .deck-dot { width: 9px; height: 9px; }
+  .deck-dot.on { width: 26px; }
+
+  .version-row { grid-template-columns: 52px 1fr auto; }
   .version-row .when, .version-row .dur { display: none; }
+  .version-row .acts { opacity: 1; }
+
+  .ab-bar { grid-template-columns: 1fr; }
+  .ab-mid { padding: var(--s2) 0; }
+
+  .art-tile, .art-add { width: 76px; height: 76px; }
+  .time-bar { font-size: 12.5px; }
 }

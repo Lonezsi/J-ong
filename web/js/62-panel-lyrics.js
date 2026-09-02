@@ -1,12 +1,15 @@
-/* The words.
+/* The words, as cards you move between.
  *
- * Click them and they become editable. Nothing asks you to name anything: a second set
- * of words is v2, and while there is only one set no name is shown at all, because there
- * is nothing to tell it apart from.
+ * Markdown, and the first line is the name. That is the whole naming scheme, so there is
+ * no Rename button: change the heading and the card is called something else. Nothing
+ * asks you to name a thing before writing it.
  *
- * History is for looking. Choosing an entry shows you that text and says so; it does not
- * touch what is saved. Restoring is a separate, deliberate press, and it only writes when
- * the words actually differ from what is already current.
+ * The cards sit in the middle of the page and slide. Drag one and it follows your hand,
+ * let go past a third of the way and it goes to the next. Arrows do the same thing for a
+ * mouse, and the keyboard arrows for neither.
+ *
+ * History is for looking. Choosing an entry shows those words and says nothing has
+ * changed; restoring is a separate press.
  */
 "use strict";
 
@@ -14,8 +17,8 @@ J.blockLyrics = async function (block, ctx) {
   let sheets = [];
   let at = 0;
   let editing = false;
-  let history = null;      // the list, when it is open
-  let viewing = null;      // { revision, text } while looking at an older version
+  let history = null;
+  let viewing = null;
 
   async function load(keepIndex) {
     const data = await J.get(`/api/songs/${ctx.songId}/lyrics`);
@@ -31,24 +34,18 @@ J.blockLyrics = async function (block, ctx) {
   const sheet = () => sheets[at];
 
   function draw() {
-    const one = sheets.length <= 1;
     const s = sheet();
+    const many = sheets.length > 1;
 
     block.innerHTML = `
       <div class="block-head">
         <h2>Lyrics</h2>
-        ${one ? "" : `
-          <span class="sheet-tabs">
-            ${sheets.map((sh, i) =>
-              `<button class="sheet-tab ${i === at ? "on" : ""}" data-sheet="${i}">${J.esc(sh.name)}</button>`).join("")}
-          </span>`}
         <span class="grow"></span>
         <span class="block-tools">
           ${s ? `<button class="btn ghost sm" data-act="history">History${
             s.revisions > 1 ? ` (${s.revisions})` : ""}</button>` : ""}
-          ${s ? '<button class="btn ghost sm" data-act="rename">Rename</button>' : ""}
-          <button class="btn ghost sm" data-act="add">${one && !s ? "Write lyrics" : "Add a version"}</button>
-          ${sheets.length > 1 ? '<button class="btn ghost sm danger" data-act="drop">Delete</button>' : ""}
+          <button class="btn ghost sm" data-act="add">${s ? "Add a version" : "Write lyrics"}</button>
+          ${many ? '<button class="btn ghost sm danger" data-act="drop">Delete this one</button>' : ""}
         </span>
       </div>
 
@@ -56,16 +53,36 @@ J.blockLyrics = async function (block, ctx) {
         <div class="time-bar">
           <span>Looking at the words from <b>${J.date(viewing.created_at)}</b>. Nothing has changed.</span>
           <span class="grow"></span>
-          <button class="btn sm" data-act="restore">Restore these words</button>
+          <button class="btn sm" data-act="restore">Restore these</button>
           <button class="btn ghost sm" data-act="back">Back to now</button>
         </div>` : ""}
 
-      <div id="lyricStage"></div>
+      <div class="lyric-deck">
+        ${many ? `<button class="deck-arrow" data-act="prev" aria-label="Previous"
+                    ${at === 0 ? "disabled" : ""}>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>` : ""}
+
+        <div class="deck-window" id="deckWindow">
+          <div class="deck-track" id="deckTrack"></div>
+        </div>
+
+        ${many ? `<button class="deck-arrow" data-act="next" aria-label="Next"
+                    ${at >= sheets.length - 1 ? "disabled" : ""}>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>` : ""}
+      </div>
+
+      ${many ? `<div class="deck-dots">${sheets.map((sh, i) =>
+        `<button class="deck-dot ${i === at ? "on" : ""}" data-go="${i}"
+                 title="${J.esc(sh.name)}" aria-label="${J.esc(sh.name)}"></button>`).join("")}</div>` : ""}
 
       ${history ? `
-        <div class="history-rail" style="margin-top:var(--s4)">
+        <div class="history-rail">
           ${history.map((r, i) => `
-            <div class="history-entry ${viewing && viewing.id === r.id ? "on" : (!viewing && i === 0 ? "on" : "")}"
+            <div class="history-entry ${viewing ? (viewing.id === r.id ? "on" : "") : (i === 0 ? "on" : "")}"
                  data-rev="${r.id}">
               <span class="when">${J.date(r.created_at)}</span>
               <span class="grow"></span>
@@ -74,32 +91,39 @@ J.blockLyrics = async function (block, ctx) {
             </div>`).join("")}
         </div>` : ""}`;
 
-    drawStage();
+    drawCards();
   }
 
-  function drawStage() {
-    const stage = J.$("#lyricStage", block);
-    const s = sheet();
-    if (!s) {
-      stage.innerHTML = `<div class="lyrics empty-words" data-act="add">
-        Nothing written yet. Click here to start.</div>`;
+  function drawCards() {
+    const track = J.$("#deckTrack", block);
+    if (!track) return;
+
+    if (!sheets.length) {
+      track.style.transform = "translate3d(0,0,0)";
+      track.innerHTML = `<article class="lyric-card"><div class="card-body empty-words"
+        data-act="edit">Nothing written yet. Click here to start.</div></article>`;
       return;
     }
+
     if (editing) {
-      stage.innerHTML = `
-        <textarea class="lyrics-edit" id="lyricText" spellcheck="true"
-          placeholder="Type the words.">${J.esc(s.text)}</textarea>
-        <div class="row" style="margin-top:var(--s3)">
+      const s = sheet();
+      track.style.transform = "translate3d(0,0,0)";
+      track.innerHTML = `<article class="lyric-card editing">
+        <textarea class="card-edit" id="lyricText" spellcheck="true"
+          placeholder="# Name it on the first line&#10;&#10;Then the words.">${J.esc(s.text)}</textarea>
+        <div class="card-foot">
           <button class="btn primary sm" data-act="save">Save</button>
           <button class="btn ghost sm" data-act="cancel">Cancel</button>
           <span class="grow"></span>
           <span class="faint" id="lyricCount"></span>
-        </div>`;
+        </div>
+      </article>`;
       const box = J.$("#lyricText", block);
       const count = J.$("#lyricCount", block);
       const tally = () => {
         const lines = box.value ? box.value.split("\n").length : 0;
-        count.textContent = `${lines} line${lines === 1 ? "" : "s"}`;
+        count.textContent = `Markdown &middot; ${lines} line${lines === 1 ? "" : "s"}`
+          .replace("&middot;", "·");
       };
       box.addEventListener("input", tally);
       box.addEventListener("keydown", (e) => {
@@ -111,10 +135,83 @@ J.blockLyrics = async function (block, ctx) {
       return;
     }
 
-    const text = viewing ? viewing.text : s.text;
-    stage.innerHTML = `<div class="lyrics ${viewing ? "reading" : ""} ${text ? "" : "empty-words"}"
-      ${viewing ? "" : 'data-act="edit" title="Click to edit"'}>${
-        text ? J.esc(text) : "Nothing written yet. Click here to start."}</div>`;
+    track.innerHTML = sheets.map((s, i) => {
+      const text = (viewing && i === at) ? viewing.text : s.text;
+      const title = J.mdTitle(text, s.name);
+      const body = J.mdBody(text);
+      return `<article class="lyric-card ${i === at ? "on" : ""} ${viewing && i === at ? "reading" : ""}">
+        <h3 class="card-title">${J.esc(title)}</h3>
+        <div class="card-body ${text ? "" : "empty-words"}"
+             ${viewing ? "" : 'data-act="edit" title="Click to edit"'}>${
+          text ? J.md(body) : "Nothing written yet. Click here to start."}</div>
+      </article>`;
+    }).join("");
+    place(false);
+  }
+
+  /* Where the track sits. One card per step, so the maths is the index. */
+  function place(animate) {
+    const track = J.$("#deckTrack", block);
+    if (!track) return;
+    track.style.transition = animate ? "transform 320ms cubic-bezier(0.22,0.7,0.3,1)" : "none";
+    track.style.transform = `translate3d(${-at * 100}%, 0, 0)`;
+  }
+
+  function go(index, animate) {
+    const to = J.clamp(index, 0, sheets.length - 1);
+    if (to === at) { place(true); return; }
+    at = to;
+    viewing = null;
+    place(animate !== false);
+    // The chrome around the deck changes with the card, but only after it has landed,
+    // so the redraw never interrupts the slide.
+    setTimeout(() => { if (block.isConnected) draw(); }, 320);
+  }
+
+  /* Dragging. The track follows the pointer and settles either back or onward. */
+  function wireDrag() {
+    const win = J.$("#deckWindow", block);
+    const track = J.$("#deckTrack", block);
+    if (!win || !track) return;
+    let startX = 0, startY = 0, dragging = false, decided = false, width = 1;
+
+    win.addEventListener("pointerdown", (e) => {
+      if (editing || sheets.length < 2) return;
+      if (e.target.closest("a, button, textarea")) return;
+      dragging = true; decided = false;
+      startX = e.clientX; startY = e.clientY;
+      width = win.getBoundingClientRect().width || 1;
+      track.style.transition = "none";
+    });
+
+    win.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      if (!decided) {
+        // Let a vertical drag scroll the page instead of swiping the card.
+        if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) { dragging = false; return; }
+        if (Math.abs(dx) < 6) return;
+        decided = true;
+        win.setPointerCapture(e.pointerId);
+      }
+      // Resist at the ends, so the deck feels like it has edges.
+      const edge = (at === 0 && dx > 0) || (at === sheets.length - 1 && dx < 0);
+      const shift = edge ? dx * 0.32 : dx;
+      track.style.transform = `translate3d(calc(${-at * 100}% + ${shift}px), 0, 0)`;
+    });
+
+    const release = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      if (!decided) return;
+      try { win.releasePointerCapture(e.pointerId); } catch (err) { /* already */ }
+      const dx = e.clientX - startX;
+      if (Math.abs(dx) > width * 0.28) go(at + (dx < 0 ? 1 : -1));
+      else place(true);
+    };
+    win.addEventListener("pointerup", release);
+    win.addEventListener("pointercancel", release);
   }
 
   async function save() {
@@ -129,20 +226,13 @@ J.blockLyrics = async function (block, ctx) {
   }
 
   block.addEventListener("click", async (e) => {
-    const tab = e.target.closest("[data-sheet]");
-    if (tab) {
-      at = Number(tab.dataset.sheet);
-      viewing = null; history = null; editing = false;
-      draw();
-      return;
-    }
+    const dot = e.target.closest("[data-go]");
+    if (dot) { go(Number(dot.dataset.go)); return; }
 
     const entry = e.target.closest("[data-rev]");
     if (entry) {
-      // Looking, not restoring. This was the whole complaint: a glance rewrote the file.
       const id = Number(entry.dataset.rev);
-      const newest = history && history[0] && history[0].id === id;
-      if (newest) { viewing = null; draw(); return; }
+      if (history && history[0] && history[0].id === id) { viewing = null; draw(); return; }
       const data = await J.try(() => J.get(`/api/lyric-revisions/${id}`));
       if (!data) return;
       viewing = data.revision;
@@ -155,7 +245,9 @@ J.blockLyrics = async function (block, ctx) {
     const what = act.dataset.act;
     const s = sheet();
 
-    if (what === "edit") { viewing = null; editing = true; drawStage(); }
+    if (what === "prev") go(at - 1);
+    if (what === "next") go(at + 1);
+    if (what === "edit") { viewing = null; editing = true; drawCards(); }
     if (what === "cancel") { editing = false; draw(); }
     if (what === "save") await save();
     if (what === "back") { viewing = null; draw(); }
@@ -178,27 +270,13 @@ J.blockLyrics = async function (block, ctx) {
     }
 
     if (what === "add") {
-      // No name asked for. It is v2 until it earns something better.
       const made = await J.try(() => J.post(`/api/songs/${ctx.songId}/lyrics`, {}));
       if (!made) return;
       await load();
-      at = sheets.findIndex((sh) => sh.id === made.sheet.id);
-      if (at < 0) at = sheets.length - 1;
+      const index = sheets.findIndex((sh) => sh.id === made.sheet.id);
+      at = index < 0 ? sheets.length - 1 : index;
       viewing = null; history = null; editing = true;
       draw();
-    }
-
-    if (what === "rename") {
-      const values = await J.sheet({
-        title: "Name these words", confirm: "Save",
-        sub: "Something you will recognise. Leave it and it stays a number.",
-        body: `<div class="sheet-fields"><label class="sheet-label">Name
-          <input class="field" name="name" value="${J.esc(s.name)}"
-                 placeholder="second verse, other way"></label></div>`,
-      });
-      if (!values || !values.name.trim()) return;
-      await J.try(() => J.patch(`/api/lyrics/${s.id}`, { name: values.name.trim() }), "Named");
-      await load(true);
     }
 
     if (what === "drop") {
@@ -211,15 +289,15 @@ J.blockLyrics = async function (block, ctx) {
     }
   });
 
-  /* Arrows page between sets of words when there is more than one. */
   const onKey = (e) => {
     if (!block.isConnected) { document.removeEventListener("keydown", onKey); return; }
     if (editing || sheets.length < 2) return;
     if (e.target.closest("input, textarea, select")) return;
-    if (e.key === "ArrowLeft" && at > 0) { at--; viewing = null; draw(); }
-    if (e.key === "ArrowRight" && at < sheets.length - 1) { at++; viewing = null; draw(); }
+    if (e.key === "ArrowLeft") go(at - 1);
+    if (e.key === "ArrowRight") go(at + 1);
   };
   document.addEventListener("keydown", onKey);
 
   await load();
+  wireDrag();
 };
