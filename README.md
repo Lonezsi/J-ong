@@ -80,6 +80,66 @@ whichever song they belong to.
 
 ---
 
+## On your machine
+
+```
+cd client
+python jong_client.py install
+```
+
+That does three things, none of which needs an administrator:
+
+- the folder watcher runs at logon
+- a **right click menu** appears on audio files, on `.flp` projects, and on folders
+- a daily task pulls a newer J-ong from GitHub at 05:00
+
+The right click entries are:
+
+| where | what it says |
+|---|---|
+| an mp3, wav, flac, m4a, ogg | **Upload to J-ong** |
+| an `.flp` | **Render and send to J-ong** |
+| a folder | **Render every FL project in here** |
+| a folder | **Watch this folder with J-ong** |
+
+All of it is written under `HKEY_CURRENT_USER`, so it belongs to you rather than the
+machine, no file associations are touched (an mp3 still opens with whatever opened it
+before), and `jong_client.py shell remove` takes it away completely.
+
+---
+
+## Rendering FL Studio projects
+
+```
+python jong_client.py render "C:\Users\you\Projects"
+```
+
+**FL Studio's command line render is not headless, and this does not pretend otherwise.**
+FL takes a `/R` switch that renders a project, and it works, but launching it opens the
+application: you see its window, it loads the project, and on some versions the export
+dialog waits for Start to be pressed. Image-Line's own forum has people asking about
+exactly this and not getting a better answer. So J-ong tells you that before it starts
+rather than leaving you to discover it.
+
+What it does do reliably: it finds FL for you, copies each project somewhere without
+spaces first (FL's command line has a long history of mishandling quoted paths), waits
+for the audio to appear and stop growing, finds the file even when FL writes it under a
+different name, skips FL's own `Backup` folders, and hands each finished render to the
+library with the usual "is this a new render of X?" question.
+
+Waiting on the file rather than on FL's window title is deliberate. Title watching is
+what most scripts do and it breaks on a different language, a different version, and
+anywhere the window is not visible. A file that has stopped growing is the same fact
+everywhere.
+
+If FL is somewhere unusual:
+
+```
+python jong_client.py flpath "C:\Program Files\Image-Line\FL Studio 2024\FL64.exe"
+```
+
+---
+
 ## Updating itself
 
 Settings has a **Check for updates** button. It compares this checkout against the branch
@@ -127,8 +187,8 @@ Each feature is a file in `jong/modules/` listed in `jong/config.py`:
 
 ```python
 MODULES = [
-    "core", "auth", "songs", "versions", "artwork", "lyrics",
-    "albums", "sound", "youtube", "sync", "updater",
+    "core", "auth", "appearance", "songs", "versions", "artwork",
+    "lyrics", "albums", "sound", "sync", "updater",
 ]
 ```
 
@@ -168,7 +228,7 @@ web/
   js/                  bundled in filename order
 client/
   jong_client.py       the desktop agent
-tests/                 98 tests, run with: python -m pytest tests -q
+tests/                 111 tests, run with: python -m pytest tests -q
 data/                  your library. Not in git.
 ```
 
