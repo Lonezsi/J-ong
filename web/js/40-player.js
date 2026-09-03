@@ -245,30 +245,82 @@ J.player = (function () {
   const api = {
     get state() { return state; },
 
+    /* Press play, and the app has already agreed.
+     *
+     * This used to do everything before saying anything: make the audio context, fetch
+     * the presets, fetch the arrangement, hand the file to the element, and then wait
+     * for play() to resolve, which does not happen until the browser has enough audio
+     * buffered to actually begin. Only then did the player appear. Locally that was
+     * about four hundred milliseconds of nothing; over a tunnel, with a forty megabyte
+     * wav at the other end, far longer, and every bit of it looked like a dead button.
+     *
+     * The order is inverted. The bar is on screen with the song in it before anything
+     * is fetched, because whether this song is going to play is already decided; the
+     * only open question is when the sound arrives. If it turns out it cannot play, the
+     * state is put back and the reason is said out loud.
+     */
     async play(song, version, queue) {
-      await ensureContext();
       const changed = !state.song || state.song.id !== song.id;
+      const before = { song: state.song, playing: state.playing };
+
       state.song = song;
-      if (queue) { state.queue = queue; state.index = queue.findIndex((s) => s.id === song.id); }
-      if (changed) {
-        state.slots.B = { version: null, preset: null };
-        await loadVersion("B", null);
-        // Neither of these needs the other, so they go together rather than in a queue.
-        await Promise.all([
-          api.loadPresets(song.id),
-          (J.arrange && J.state.modules.includes("arrange"))
-            ? J.try(() => J.arrange.load(song.id)) : Promise.resolve(),
-        ]);
-      }
       state.active = "A";
-      await loadVersion("A", version);
-      applyPreset("A", state.slots.A.preset || defaultPreset());
-      applyGains();
-      await startBoth();
       state.playing = true;
+      if (queue) { state.queue = queue; state.index = queue.findIndex((s) => s.id === song.id); }
+      if (changed) state.slots.B = { version: null, preset: null };
+      state.slots.A.version = version;
       render();
       startTicking();
       J.emit("player:change");
+
+      try {
+        await ensureContext();
+        if (state.song !== song) return;        // they moved on while this was starting
+        if (changed) {
+          await loadVersion("B", null);
+          // Neither of these needs the other, so they go together rather than in a queue.
+          await Promise.all([
+            api.loadPresets(song.id),
+            (J.arrange && J.state.modules.includes("arrange"))
+              ? J.try(() => J.arrange.load(song.id)) : Promise.resolve(),
+          ]);
+          if (state.song !== song) return;
+        }
+        await loadVersion("A", version);
+        applyPreset("A", state.slots.A.preset || defaultPreset());
+        applyGains();
+        await startBoth();
+        if (state.song !== song) return;
+        render();
+        J.emit("player:change");
+      } catch (e) {
+        if (state.song !== song) return;
+        state.song = before.song;
+        state.playing = before.playing;
+        stopTicking();
+        render();
+        J.emit("player:change");
+        J.toast(e.message || "That would not play.", "bad");
+      }
+    },
+
+    /* Start fetching a render before anyone asks for it.
+     *
+     * Handing the file to the element is what actually costs: the browser will not begin
+     * until it holds enough audio, and for an uncompressed bounce that is a real fetch.
+     * Doing it when a song page opens, or when a pointer settles on a row, means the
+     * press has nothing left to wait for. Nothing plays, nothing is heard; the deck is
+     * simply already holding the file.
+     *
+     * Never while something is playing: the deck it would prime is the deck in use. */
+    prime(version) {
+      if (!version || state.playing) return;
+      const deck = J.audio.deck("A");
+      if (!deck || deck.versionId === version.id) return;
+      if (state.slots.A.version && state.slots.A.version.id === version.id) return;
+      deck.versionId = version.id;
+      deck.element.src = `/api/versions/${version.id}/audio`;
+      deck.element.load();
     },
 
     defaultPreset,

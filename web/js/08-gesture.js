@@ -10,10 +10,13 @@
  *
  * What the waiting looks at:
  *
- *   aimed        a finger that landed on a handle meant that handle, so it acts at once
- *   still        held in one place for a moment, with nothing scrolling: an interaction
+ *   settled      the page has to have been still for a moment first. A finger that
+ *                lands while the list is gliding belongs to that glide, whatever it
+ *                does next, because catching a moving list is the commonest thing a
+ *                finger does and it must never change a setting
+ *   aimed        on a settled page, a finger that landed on a handle meant that handle
+ *   still        held in one place for a moment: an interaction
  *   sideways     moved across rather than up: an interaction, since pages scroll up
- *   fast         flicked, at speed: a scroll, whatever the direction
  *   cancelled    the browser started scrolling and took the pointer away: a scroll
  *
  * The last one is the reliable one, and it is why the controls are marked touch-action
@@ -27,8 +30,30 @@ J.gesture = (function () {
   const SLOP = 9;
   //: Held still for this long with no scroll starting, and it was meant for the control.
   const HOLD = 260;
-  //: Pixels per millisecond past which a drag reads as a flick, and flicks are scrolls.
-  const FLICK = 0.55;
+
+  /* How long the page has to have been still before a finger is believed.
+   *
+   * Speed turned out to be the wrong question. A slow, careful drag down the equaliser
+   * while the page is still gliding is a scroll; a quick decisive grab of a node on a
+   * page that has been sitting still for a second is not. What separates them is not how
+   * fast the finger moved, it is whether the page was already moving when it landed.
+   *
+   * So the app remembers when it last scrolled, and a touch that arrives inside this
+   * window is treated as part of that scroll: momentum still running down, a finger put
+   * out to stop it, a second flick to keep going. None of those meant to touch a
+   * control, and all of them used to.
+   */
+  const QUIET = 420;
+
+  //: When the page last moved, by any means.
+  let lastScroll = 0;
+  const noteScroll = () => { lastScroll = performance.now(); };
+  //: Capture, because most scrolling here happens inside panels rather than on the page.
+  document.addEventListener("scroll", noteScroll, { capture: true, passive: true });
+  window.addEventListener("wheel", noteScroll, { passive: true });
+
+  //: How long the page has been still, in milliseconds.
+  const stillFor = () => (lastScroll ? performance.now() - lastScroll : Infinity);
 
   /* Start a gesture, deciding first whether it is one.
    *
@@ -74,11 +99,11 @@ J.gesture = (function () {
       const travelled = Math.hypot(dx, dy);
       if (travelled < SLOP) return;
 
-      const elapsed = Math.max(1, performance.now() - startedAt);
-      const speed = travelled / elapsed;
-      // A flick is a scroll whichever way it went, and anything more up than across is
-      // a scroll too, because that is the direction pages move in.
-      if (speed > FLICK || Math.abs(dy) > Math.abs(dx)) { die(); return; }
+      // The page started moving under the finger after it landed, so whatever this was
+      // meant to be, it is a scroll now.
+      if (stillFor() < QUIET) { die(); return; }
+      // Anything more up than across is a scroll, because that is the way pages go.
+      if (Math.abs(dy) > Math.abs(dx)) { die(); return; }
       start();
       if (opts.onMove) opts.onMove(e, { dx, dy });
     }
@@ -109,7 +134,15 @@ J.gesture = (function () {
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
 
-    if (!touch || opts.aimed) {
+    if (!touch) {
+      start();                       // a mouse cannot scroll by dragging
+    } else if (stillFor() < QUIET) {
+      /* The page was moving a moment ago, so this finger belongs to that. Even a
+       * deliberate looking press on a handle is refused here: catching a list that is
+       * still gliding is the single most common thing a finger does, and it must never
+       * change a setting. */
+      die();
+    } else if (opts.aimed) {
       start();
     } else {
       timer = setTimeout(start, HOLD);
@@ -121,5 +154,5 @@ J.gesture = (function () {
     };
   }
 
-  return { begin, SLOP, HOLD, FLICK };
+  return { begin, stillFor, SLOP, HOLD, QUIET };
 })();

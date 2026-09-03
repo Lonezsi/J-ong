@@ -265,6 +265,26 @@ async function boot() {
   const keysButton = J.$("#railKeys");
   if (keysButton) keysButton.addEventListener("click", showKeys);
 
+  /* Build the audio engine on the first touch of anything, not on the first press of
+   * play.
+   *
+   * A browser will not let a page make an AudioContext until someone has interacted
+   * with it, so the work landed on the play button: seventy odd milliseconds of making
+   * the context, resuming it and wiring two decks, every one of them spent after the
+   * press and before any sound. Any click satisfies the browser, so the first one does
+   * it, and by the time play is pressed the engine has been ready for a while.
+   */
+  const warmAudio = () => {
+    document.removeEventListener("pointerdown", warmAudio, true);
+    document.removeEventListener("keydown", warmAudio, true);
+    try {
+      J.audio.resume();
+      ["A", "B"].forEach((slot) => J.audio.wire(slot));
+    } catch (e) { /* it will be built on the first play instead */ }
+  };
+  document.addEventListener("pointerdown", warmAudio, true);
+  document.addEventListener("keydown", warmAudio, true);
+
   J.emit("boot");
   J.router.start();
 

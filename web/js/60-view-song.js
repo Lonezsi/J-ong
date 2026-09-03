@@ -174,6 +174,9 @@ J.views.song = {
       J.arrange.warm();
     }
 
+    // Whatever this page is about is the thing most likely to be played next.
+    J.player.prime(ctx.currentVersion());
+
     if (has("lyrics")) await J.blockLyrics(J.$("#lyricsBlock", root), ctx);
     if (has("sound")) await J.blockSound(J.$("#soundBlock", root), ctx);
     if (has("artwork")) await J.blockArtwork(J.$("#artworkBlock", root), ctx);

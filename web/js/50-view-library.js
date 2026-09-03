@@ -50,6 +50,25 @@ J.wireTracks = function (root, songs) {
     const row = e.target.closest(".track");
     if (row && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); activate(row); }
   });
+  /* A pointer that settles on a row is usually about to press it. Not on the way past,
+   * which would fetch a file for every row a mouse crossed, and not on touch, where
+   * there is no hovering and the data would be someone's phone bill. */
+  let primeTimer = null;
+  root.addEventListener("pointerover", (e) => {
+    if (e.pointerType === "touch") return;
+    const row = e.target.closest(".track");
+    clearTimeout(primeTimer);
+    if (!row) return;
+    primeTimer = setTimeout(async () => {
+      const song = songs.find((s) => String(s.id) === row.dataset.song);
+      if (!song || !song.version_count) return;
+      const data = await J.try(() => J.get(`/api/songs/${song.id}/versions`));
+      const list = data && data.versions;
+      if (!list || !list.length) return;
+      J.player.prime(list.find((v) => v.id === data.current_version_id) || list[0]);
+    }, 140);
+  });
+
   root.addEventListener("dblclick", (e) => {
     const row = e.target.closest(".track");
     if (row) location.hash = `#/song/${row.dataset.song}`;
