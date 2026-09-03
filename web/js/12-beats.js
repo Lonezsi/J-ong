@@ -27,6 +27,9 @@ J.beats = (function () {
   const RATE = 100;
   const LOW = 60, HIGH = 190;      // the range tempos get folded into
 
+  //: Sections are tinted within green through to blue, which is the room this is in.
+  const BAND_FROM = 120, BAND_WIDTH = 130;
+
   /* Onset strength over time, at RATE windows a second.
    *
    * Sub-band rather than broadband: summing the rises in several frequency bands stops a
@@ -299,7 +302,12 @@ J.beats = (function () {
           name: "Part " + (index + 1),
           from: bar * bars,
           beats: Math.max(bars, (nextBar - bar) * bars),
-          hue: (140 + index * 47) % 360,
+          /* Sections are coloured within one family rather than around the whole
+           * wheel. Stepping 47 degrees each time put a pink section next to a red one
+           * next to a yellow one in an app that is otherwise green, which reads as the
+           * colours meaning something when they mean nothing but "not the last one".
+           * The step is large enough that neighbours are never close. */
+          hue: BAND_FROM + ((index * 53) % BAND_WIDTH),
         };
       });
       return { bpm, offset, confidence, parts, totalBeats };
