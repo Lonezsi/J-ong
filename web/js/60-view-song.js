@@ -239,6 +239,15 @@ function wireAB(root, ctx) {
     if (add) add.hidden = hasB;
   }
 
+  /* Right clicking a slot opens what clicking it opens. Nothing is hidden behind the
+   * gesture, but nothing falls through to the browser either. */
+  bar.addEventListener("contextmenu", (e) => {
+    const chip = e.target.closest(".slot-pick, .ab-add");
+    if (!chip) return;
+    e.preventDefault();
+    openSlotMenu(chip, chip.dataset.slot || "B", ctx, paint);
+  });
+
   bar.addEventListener("click", async (e) => {
     const swap = e.target.closest("#abSwitch");
     if (swap) {
@@ -325,6 +334,7 @@ function wireCompositor(root, ctx) {
 
 
 function openSlotMenu(anchor, slot, ctx, done) {
+  J.menu.close();          // and the other way round
   const existing = document.querySelector(".slot-menu");
   if (existing) { existing.remove(); if (existing.dataset.slot === slot) return; }
 
@@ -444,6 +454,18 @@ function place(menu, anchor) {
 function wireTitle(root, ctx, previous) {
   const heading = J.$("#songTitle", root);
   if (!heading) return;
+
+  J.menu.on(root, "#songTitle", () => [
+    { label: "Rename", icon: "edit", hint: "Click", run: edit },
+    previous.length ? { label: `Names it has had (${previous.length})`, icon: "open",
+      run: () => J.$("#alsoKnown", root)?.click() } : null,
+    { divider: true },
+    { label: "Copy the name", icon: "copy",
+      run: async () => {
+        try { await navigator.clipboard.writeText(ctx.song.title); J.toast("Copied."); }
+        catch (e) { J.toast(ctx.song.title); }
+      } },
+  ]);
 
   const edit = () => {
     if (J.$(".song-title-input", root)) return;

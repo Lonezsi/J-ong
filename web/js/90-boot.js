@@ -190,6 +190,28 @@ async function boot() {
     if (e.key === "Enter") runSearch.now();
   });
 
+  /* Albums in the rail get the same menu as the cards in the library, because they are
+   * the same album and a person should not have to remember which copy of a thing they
+   * are pointing at. */
+  const rail = J.$("#railAlbums");
+  if (rail) {
+    J.menu.on(rail, ".rail-album", (node) => {
+      const href = node.getAttribute("href") || "";
+      const id = href.split("/").pop();
+      if (!id) return null;
+      return [
+        { label: "Open", icon: "open", hint: "Click", run: () => { location.hash = href; } },
+        { label: "Play it through", icon: "play",
+          run: async () => {
+            const data = await J.try(() => J.get(`/api/albums/${id}`));
+            const list = data && data.songs;
+            if (!list || !list.length) { J.toast("That album has no songs in it yet."); return; }
+            J.playSong(list[0], list);
+          } },
+      ];
+    });
+  }
+
   J.on("albums:changed", () => refreshRailAlbums(J.state));
   J.on("renders:changed", refreshRenderBadge);
   J.on("settings:changed", async () => {

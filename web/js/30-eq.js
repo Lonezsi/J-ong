@@ -336,13 +336,50 @@ J.eq = (function () {
       commit();
     });
 
+    /* Right clicking the curve.
+     *
+     * This used to delete a band outright, with no menu and nothing said: a destructive
+     * action on the gesture that everywhere else means "show me the options", and no way
+     * back. It offers them instead, and right clicking empty space can now put a band
+     * where you pointed rather than falling through to the browser's own menu. */
     canvas.addEventListener("contextmenu", (e) => {
-      const band = nodeAt(at(e));
-      if (!band) return;
       e.preventDefault();
-      data.bands = data.bands.filter((b) => b.id !== band.id);
-      if (selected === band.id) { selected = null; onSelect(null); }
-      commit();
+      const point = at(e);
+      const band = nodeAt(point);
+
+      if (!band) {
+        J.menu.show([
+          { label: `Add a bell at ${J.eq.fmtHz(xToF(point.x))}`, icon: "add",
+            run: () => { const made = addAt(point); selected = made.id; onSelect(made.id); commit(); } },
+          { divider: true },
+          { label: `Flatten all ${data.bands.length} band${data.bands.length === 1 ? "" : "s"}`,
+            icon: "drop", danger: true, disabled: !data.bands.length,
+            run: () => { data.bands = []; selected = null; onSelect(null); commit(); } },
+        ], e);
+        return;
+      }
+
+      const remove = () => {
+        data.bands = data.bands.filter((b) => b.id !== band.id);
+        if (selected === band.id) { selected = null; onSelect(null); }
+        commit();
+      };
+      J.menu.show([
+        { group: `${TYPE_LABEL[band.type] || band.type} at ${J.eq.fmtHz(band.freq)}` },
+        ...Object.keys(TYPE_LABEL).map((type) => ({
+          label: TYPE_LABEL[type], icon: type === band.type ? "star" : null,
+          disabled: type === band.type,
+          run: () => { band.type = type; commit(); },
+        })),
+        { divider: true },
+        { label: band.on === false ? "Switch it back on" : "Switch it off", icon: "edit",
+          run: () => { band.on = band.on === false; commit(); } },
+        { label: "Flatten this one", icon: "edit", disabled: FLAT.has(band.type) || !band.gain,
+          run: () => { band.gain = 0; commit(); } },
+        { divider: true },
+        { label: "Remove this band", icon: "drop", danger: true, hint: "Double click",
+          run: remove },
+      ], e);
     });
 
     return {

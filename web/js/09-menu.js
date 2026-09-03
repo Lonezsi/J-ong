@@ -105,6 +105,11 @@ J.menu = (function () {
     /* items, and where. `where` is a pointer event, or {anchor: element}. */
     show(items, where) {
       close();
+      /* The song page's slot menu is its own thing, older than this one and shaped
+       * around versions and presets rather than a list of actions. It still has to go
+       * when this opens: two menus on screen at once, neither aware of the other, is
+       * the kind of thing that makes an app feel unfinished. */
+      document.querySelectorAll(".slot-menu:not(.app-menu)").forEach((n) => n.remove());
       const usable = (items || []).filter(Boolean);
       if (!usable.some((i) => i.run)) return null;
 
