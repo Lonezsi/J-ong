@@ -241,6 +241,52 @@ J.compositor = (function () {
       J.emit("compositor:select", { clip, part: clip && A.state.parts.find((p) => p.id === clip.part) });
     }
 
+    /* Right clicking a section. Duplicate is a double click and remove is Backspace,
+     * neither of which anybody discovers, so both live here with their shortcuts shown
+     * next to them. */
+    J.menu.on(root, ".comp-clip", (node) => {
+      const clip = A.state.clips.find((c) => c.id === node.dataset.clip);
+      if (!clip) return null;
+      const part = A.state.parts.find((p) => p.id === clip.part);
+      /* Say the length you will actually get. Rounding beats into bars for the label
+       * while resizing in beats meant "halve it, to 3 bars" handed you two and a half,
+       * which is a menu telling you something that is not true. */
+      const per = A.state.perBar;
+      const length = (beats) => {
+        const bars = beats / per;
+        if (Number.isInteger(bars)) return `${bars} bar${bars === 1 ? "" : "s"}`;
+        return `${beats} beat${beats === 1 ? "" : "s"}`;
+      };
+      const half = Math.max(1, Math.round(clip.beats / 2));
+      return [
+        { group: part ? part.name : "Section" },
+        { label: "Duplicate", icon: "copy", hint: "Double click",
+          run: () => { const copy = A.duplicate(clip.id); draw(); if (copy) select(copy.id); } },
+        { label: `Halve it, to ${length(half)}`,
+          icon: "edit", disabled: clip.beats < 2,
+          run: () => { A.resize(clip.id, "end", half); draw(); } },
+        { label: `Double it, to ${length(clip.beats * 2)}`, icon: "edit",
+          run: () => { A.resize(clip.id, "end", clip.beats * 2); draw(); } },
+        { divider: true },
+        part ? { label: "Rename this section", icon: "tag",
+          run: async () => {
+            const fields = await J.sheet({
+              title: "Name this section", confirm: "Rename",
+              body: `<input class="field" name="name" value="${J.esc(part.name)}">`,
+            });
+            if (fields && fields.name.trim()) { A.renamePart(part.id, fields.name.trim()); draw(); }
+          } } : null,
+        { label: "Play from here", icon: "play",
+          run: () => {
+            const row = A.laid().find((r) => r.clip.id === clip.id);
+            if (row) { A.seek(row.at); if (!J.player.state.playing) J.player.toggle(); }
+          } },
+        { divider: true },
+        { label: "Remove from the arrangement", icon: "drop", danger: true, hint: "Backspace",
+          run: () => { A.remove(clip.id); draw(); } },
+      ];
+    });
+
     root.addEventListener("dblclick", (e) => {
       const node = e.target.closest(".comp-clip");
       if (!node) return;

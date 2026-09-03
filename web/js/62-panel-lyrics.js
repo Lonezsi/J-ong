@@ -371,6 +371,40 @@ J.blockLyrics = async function (block, ctx) {
     drawCards();
   });
 
+  /* Right clicking a set of words. */
+  J.menu.on(block, ".lyric-card", (card) => {
+    const sheet = sheets.find((sh) => String(sh.id) === card.dataset.sheet);
+    if (!sheet) return null;
+    const linked = J.arrange && J.arrange.partForSheet ? J.arrange.partForSheet(sheet.id) : null;
+    return [
+      { label: "Edit", icon: "edit", hint: "Click",
+        run: () => card.querySelector('[data-act="edit"]')?.click() },
+      { label: sheet.is_current ? "This is the current one" : "Make this the current one",
+        icon: "star", disabled: !!sheet.is_current,
+        run: async () => {
+          await J.try(() => J.post(`/api/lyrics/${sheet.id}/current`), "Made current");
+          await load(true);
+        } },
+      { label: `History${sheet.revisions > 1 ? ` (${sheet.revisions})` : ""}`, icon: "open",
+        disabled: !(sheet.revisions > 1),
+        run: () => J.$('[data-act="history"]', block)?.click() },
+      { divider: true },
+      { label: "Copy the words", icon: "copy",
+        run: async () => {
+          try { await navigator.clipboard.writeText(sheet.text || ""); J.toast("Copied."); }
+          catch (e) { J.toast("The browser would not let go of the clipboard.", "bad"); }
+        } },
+      (J.arrange && J.arrange.state.parts.length) ? {
+        label: linked ? `Section: ${linked.name}` : "Point at a section", icon: "tag",
+        run: () => card.querySelector("[data-part-for]")?.click(),
+      } : null,
+      { divider: true },
+      { label: "Delete these words", icon: "drop", danger: true,
+        disabled: sheets.length < 2,
+        run: () => card.querySelector('[data-act="drop"]')?.click() },
+    ];
+  });
+
   /* The compositor says which section is sounding; the matching card lights up. */
   const onPlaying = (e) => {
     if (!block.isConnected) { J.bus.removeEventListener("arrange:playing", onPlaying); return; }

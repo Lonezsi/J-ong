@@ -270,6 +270,40 @@ J.views.renders = {
         </div>`;
     }
 
+    /* Right clicking a render. The row itself adds it to a song; everything else it
+     * can do lives here rather than as four more buttons on every row. */
+    J.menu.on(root, ".render-row", (node) => {
+      const render = rows.find((r) => String(r.id) === node.dataset.id);
+      if (!render) return null;
+      return [
+        { label: playing === render.id ? "Stop" : "Play", icon: "play",
+          run: () => node.querySelector('[data-act="play"]').click() },
+        render.waiting
+          ? { label: "Add to a song", icon: "add", hint: "Click",
+              run: async () => { if (await J.renders.pick(render)) load(); } }
+          : { label: `Put back${render.song_title ? " from " + render.song_title : ""}`,
+              icon: "open",
+              run: () => node.querySelector('[data-act="unattach"]').click() },
+        { divider: true },
+        { label: "Rename", icon: "edit",
+          run: () => node.querySelector('[data-act="rename"]').click() },
+        { label: "Download", icon: "down",
+          run: () => window.open(`/api/renders/${render.id}/audio`, "_blank") },
+        render.source_path
+          ? { label: "Copy where it came from", icon: "copy",
+              run: async () => {
+                try {
+                  await navigator.clipboard.writeText(render.source_path);
+                  J.toast("Path copied.");
+                } catch (e) { J.toast(render.source_path); }
+              } }
+          : null,
+        { divider: true },
+        { label: "Throw away", icon: "drop", danger: true,
+          run: () => node.querySelector('[data-act="dismiss"]').click() },
+      ];
+    });
+
     root.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
       const row = e.target.closest('.render-row[role="button"]');

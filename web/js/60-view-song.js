@@ -508,6 +508,28 @@ function wireHero(root, ctx) {
   const cover = J.$("#coverEdit", root);
   if (cover && cover.tagName === "BUTTON") {
     cover.addEventListener("click", () => J.$("#artPick", root).click());
+
+    /* The artwork can be replaced, and it can be taken away, and only one of those was
+     * reachable. Removing it is not a button anybody wants next to a picture. */
+    J.menu.on(root, "#coverEdit", () => [
+      { label: ctx.artwork.length ? "Change the artwork" : "Add artwork", icon: "art",
+        hint: "Click", run: () => J.$("#artPick", root).click() },
+      ctx.artwork.length > 1 ? {
+        label: `Pick from the ${ctx.artwork.length} it has`, icon: "copy",
+        run: () => J.$("#artworkBlock", root)?.scrollIntoView({ behavior: "smooth" }),
+      } : null,
+      ctx.artwork.length ? { divider: true } : null,
+      ctx.artwork.length ? {
+        label: "Remove the artwork", icon: "drop", danger: true,
+        run: async () => {
+          const sure = await J.confirm("Remove this artwork?",
+            "The song keeps everything else. You can upload another whenever.", "Remove it");
+          if (!sure) return;
+          await J.try(() => J.del(`/api/artwork/${ctx.artwork[0].id}`), "Removed");
+          J.router.reload();
+        },
+      } : null,
+    ]);
   }
 
   const renders = J.$("#renderPick", root);

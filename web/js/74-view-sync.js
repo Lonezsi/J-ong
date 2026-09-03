@@ -85,7 +85,27 @@ J.views.sync = {
           </div>` : ""}`;
     }
 
-    root.addEventListener("input", (e) => {
+    J.menu.on(root, "[data-folder]", (node) => {
+    const folder = folders.find((f) => String(f.id) === node.dataset.folder);
+    if (!folder) return null;
+    return [
+      { group: folder.path },
+      { label: "Scan it now", icon: "play",
+        run: () => J.$('[data-act="scan"]', root)?.click() },
+      { label: folder.enabled ? "Stop watching it" : "Watch it again", icon: "edit",
+        run: () => node.querySelector('[data-act="toggle"]')?.click() },
+      { label: "Copy the path", icon: "copy",
+        run: async () => {
+          try { await navigator.clipboard.writeText(folder.path); J.toast("Path copied."); }
+          catch (e) { J.toast(folder.path); }
+        } },
+      { divider: true },
+      { label: "Remove from the list", icon: "drop", danger: true,
+        run: () => node.querySelector('[data-act="remove"]')?.click() },
+    ];
+  });
+
+  root.addEventListener("input", (e) => {
     const picker = e.target.closest("#accent");
     if (!picker) return;
     // The swatch is the control; the native input behind it is only the colour wheel.

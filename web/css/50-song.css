@@ -569,3 +569,24 @@ textarea.card-edit {
 
 /* Offered instead of an empty B chip and a swap arrow that could not do anything. */
 .ab-add { white-space: nowrap; }
+
+/* ── the shared menu ──────────────────────────────────────────────────────── */
+
+.app-menu { min-width: 200px; }
+.app-menu .menu-row { gap: var(--s3); }
+.app-menu .menu-row:focus-visible { background: var(--hover); color: var(--text); outline: none; }
+.app-menu .menu-row[disabled] { opacity: 0.4; cursor: default; }
+.app-menu .menu-row[disabled]:hover { background: none; color: var(--text-2); }
+.app-menu .menu-row.danger { color: var(--bad); }
+.app-menu .menu-row.danger:hover { background: rgba(212, 104, 94, 0.12); color: var(--bad-hi); }
+
+.menu-icon { width: 15px; height: 15px; flex: none; opacity: 0.75; }
+.menu-hint {
+  font-size: 11px; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.menu-divider {
+  height: 1px; margin: var(--s2) var(--s2);
+  background: var(--line);
+}

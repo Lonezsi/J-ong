@@ -54,7 +54,103 @@ J.wireTracks = function (root, songs) {
     const row = e.target.closest(".track");
     if (row) location.hash = `#/song/${row.dataset.song}`;
   });
+
+  /* Right clicking a song. Everything you can do to one, in the place you are already
+   * pointing at it, rather than by going to its page to find out. */
+  J.menu.on(root, ".album-card", (card) => {
+    const id = card.dataset.album;
+    return [
+      { label: "Open", icon: "open", hint: "Click",
+        run: () => { location.hash = `#/album/${id}`; } },
+      /* Actually plays it. It used to open the album page, which is what Open does,
+       * so the menu had two entries doing the same thing and one of them was lying
+       * about which. */
+      { label: "Play it through", icon: "play",
+        run: async () => {
+          const data = await J.try(() => J.get(`/api/albums/${id}`));
+          const list = data && data.songs;
+          if (!list || !list.length) { J.toast("That album has no songs in it yet."); return; }
+          J.playSong(list[0], list);
+        } },
+      { divider: true },
+      { label: "Rename", icon: "edit", run: () => renameAlbum(id) },
+      { label: "Delete the album", icon: "drop", danger: true,
+        run: () => deleteAlbum(id) },
+    ];
+  });
+
+  J.menu.on(root, ".track", (row) => {
+    const song = songs.find((s) => String(s.id) === row.dataset.song);
+    if (!song) return null;
+    const playing = J.player.state.song && J.player.state.song.id === song.id;
+    return [
+      { label: playing && J.player.state.playing ? "Pause" : "Play", icon: "play",
+        hint: "Click", run: () => J.playSong(song, songs) },
+      { label: "Open", icon: "open", run: () => { location.hash = `#/song/${song.id}`; } },
+      { divider: true },
+      J.state.modules.includes("renders") ? {
+        label: "Add a render", icon: "add",
+        run: async () => {
+          const made = await J.renders.pickFor(song);
+          if (made) J.emit("songs:changed");
+        },
+      } : null,
+      J.state.modules.includes("albums") ? {
+        label: "Add to an album", icon: "tag",
+        run: () => { location.hash = `#/song/${song.id}`; },
+      } : null,
+      { label: "Rename", icon: "edit", run: () => renameSong(song) },
+      { divider: true },
+      { label: "Delete", icon: "drop", danger: true, run: () => deleteSong(song) },
+    ];
+  });
 };
+
+/* An album, dealt with from the shelf rather than by opening it first. Deleting one
+ * never touches the songs in it, which is worth saying in the question. */
+async function renameAlbum(id) {
+  const fields = await J.sheet({
+    title: "Rename the album", confirm: "Rename",
+    body: `<input class="field" name="title" placeholder="Album name">`,
+  });
+  if (!fields || !fields.title.trim()) return;
+  await J.try(() => J.patch(`/api/albums/${id}`, { title: fields.title.trim() }), "Renamed");
+  J.emit("albums:changed");
+  J.router.reload();
+}
+
+async function deleteAlbum(id) {
+  const sure = await J.confirm("Delete this album?",
+    "The songs in it stay exactly where they are. Only the grouping goes.", "Delete it");
+  if (!sure) return;
+  await J.try(() => J.del(`/api/albums/${id}`), "Deleted");
+  J.emit("albums:changed");
+  J.router.reload();
+}
+
+/* Renaming and deleting from the menu, so a song can be dealt with from the list it is
+ * in. Both ask the server the same way the song page does. */
+async function renameSong(song) {
+  const fields = await J.sheet({
+    title: "Rename",
+    sub: "The old name is kept, the way Steam keeps yours.",
+    confirm: "Rename",
+    body: `<input class="field" name="title" value="${J.esc(song.title)}">`,
+  });
+  if (!fields || !fields.title.trim() || fields.title.trim() === song.title) return;
+  await J.try(() => J.patch(`/api/songs/${song.id}`, { title: fields.title.trim() }), "Renamed");
+  J.emit("songs:changed");
+  J.router.reload();
+}
+
+async function deleteSong(song) {
+  const sure = await J.confirm(`Delete ${song.title}?`,
+    "Its renders, words and artwork go with it. This cannot be undone.", "Delete it");
+  if (!sure) return;
+  await J.try(() => J.del(`/api/songs/${song.id}`), "Deleted");
+  J.emit("songs:changed");
+  J.router.reload();
+}
 
 J.views.library = {
   title: "Library",

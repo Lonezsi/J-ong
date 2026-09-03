@@ -342,6 +342,38 @@ J.blockSound = async function (panel, ctx) {
       : `<span>${bands.length} band${bands.length === 1 ? "" : "s"}</span>`;
   }
 
+  /* Right clicking a preset. The rename, clone and new buttons are icons next to the
+   * selected one; this is where the rest of it lives, including deleting one, which
+   * should not be a button sitting next to the thing it deletes. */
+  J.menu.on(panel, "[data-preset]", (node) => {
+    const preset = presets.find((p) => String(p.id) === node.dataset.preset);
+    if (!preset) return null;
+    const bands = (preset.data.bands || []).length;
+    return [
+      { group: preset.name },
+      { label: preset.id === active.id ? "Selected" : "Use this one", icon: "play",
+        disabled: preset.id === active.id, run: () => node.click() },
+      { label: preset.is_current ? "This is the song's own" : "Make it the song's own",
+        icon: "star", disabled: !!preset.is_current,
+        run: async () => {
+          await J.try(() => J.post(`/api/sound/${preset.id}/current`), "Set");
+          await load();
+        } },
+      { divider: true },
+      /* These press the panel's own buttons rather than repeating what they do, so
+       * there is one implementation of renaming a preset and the menu cannot drift
+       * away from it. */
+      { label: "Rename", icon: "edit",
+        run: () => J.$('[data-act="rename-preset"]', panel)?.click() },
+      { label: `Duplicate${bands ? ` (${bands} band${bands === 1 ? "" : "s"})` : ""}`,
+        icon: "copy", run: () => J.$('[data-act="clone-preset"]', panel)?.click() },
+      { divider: true },
+      { label: "Delete this preset", icon: "drop", danger: true,
+        disabled: presets.length < 2,
+        run: () => J.$('[data-act="delete-preset"]', panel)?.click() },
+    ];
+  });
+
   /* Dragging a Q knob. Vertical, because that is how a knob is turned with a thumb. */
   panel.addEventListener("pointerdown", (e) => {
     const knob = e.target.closest(".q-knob");

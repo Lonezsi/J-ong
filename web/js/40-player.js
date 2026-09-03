@@ -403,6 +403,35 @@ J.player = (function () {
 
   J.on("boot", () => {
     const node = el();
+
+    /* Right clicking whatever is playing. The bar is the one thing on screen at all
+     * times, so it is the fastest way to reach the song you are listening to. */
+    J.menu.on(node, ".now-playing", () => {
+      if (!state.song) return null;
+      const version = state.slots[state.active].version;
+      return [
+        { group: state.song.title },
+        { label: "Open the song", icon: "open",
+          run: () => { location.hash = `#/song/${state.song.id}`; } },
+        { label: state.playing ? "Pause" : "Play", icon: "play", hint: "Space",
+          run: () => api.toggle() },
+        { divider: true },
+        { label: "Back to the start", icon: "open", run: () => api.seek(0) },
+        version ? { label: `Download v${version.n}`, icon: "down",
+          run: () => window.open(`/api/versions/${version.id}/download`, "_blank") } : null,
+        { divider: true },
+        { label: "Stop and clear the player", icon: "drop",
+          run: () => {
+            pauseBoth();
+            state.playing = false;
+            state.song = null;
+            stopTicking();
+            render();
+            J.emit("player:change");
+          } },
+      ];
+    });
+
     node.addEventListener("click", async (e) => {
       const hit = e.target.closest("[data-act]");
       if (!hit) return;

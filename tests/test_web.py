@@ -422,3 +422,24 @@ def test_every_control_marked_with_an_action_has_one():
 
     dead = {act: sorted(files) for act, files in used.items() if act not in handled}
     assert not dead, "controls that say they do something and do not: %s" % dead
+
+
+def test_every_control_a_menu_reaches_for_actually_exists():
+    """A menu item that presses a button by selector is only as good as the selector.
+
+    The preset menu reached for [data-act="clone"] when the button is called
+    clone-preset, so Duplicate was a menu entry that quietly did nothing. That is the
+    same failure as a dead button, arrived at from the other direction: the handler
+    exists, the markup exists, and the two do not meet.
+    """
+    declared, reached = set(), {}
+    for name, text in _all_js():
+        declared.update(re.findall(r'data-act="([a-z-]+)"(?!\s*\])', text))
+        # Selector forms: J.$('[data-act="x"]') and node.querySelector('[data-act="x"]')
+        for act in re.findall(r"""querySelector\(\s*['"]\[data-act=['"]([a-z-]+)""", text):
+            reached.setdefault(act, set()).add(name)
+        for act in re.findall(r"""J\.\$\(\s*['"]\[data-act=['"]([a-z-]+)""", text):
+            reached.setdefault(act, set()).add(name)
+
+    missing = {act: sorted(files) for act, files in reached.items() if act not in declared}
+    assert not missing, "menus reaching for controls that do not exist: %s" % missing
