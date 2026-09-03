@@ -159,6 +159,9 @@
 .section:first-child { margin-top: var(--s3); }
 .section-head {
   display: flex; align-items: baseline; gap: var(--s3);
+  /* Wrapping so a heading with two buttons after it does not run off the side of a
+     phone. The spacer pushes them to a second line rather than off the edge. */
+  flex-wrap: wrap;
   margin-bottom: var(--s4);
 }
 .section-head .grow { flex: 1; }

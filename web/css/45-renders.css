@@ -1,0 +1,115 @@
+/* ── the renders list, and choosing where one goes ────────────────────────── */
+
+.render-row {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  margin-bottom: var(--s2);
+  transition: border-color var(--fast), background var(--fast);
+}
+.render-row:hover { border-color: var(--line); }
+.render-row .grow { min-width: 0; flex: 1; display: block; }
+/* One that has found its song stays readable but stops asking for attention. */
+.render-row.used { opacity: 0.62; }
+.render-row.used:hover { opacity: 1; }
+
+.render-name {
+  display: block;
+  font-weight: 650;
+  cursor: text;
+  border-bottom: 1px solid transparent;
+}
+.render-name:hover { border-bottom-color: var(--line-2); }
+.render-row .s {
+  display: block;
+  font-size: 12px;
+  color: var(--text-3);
+  margin-top: 1px;
+}
+.render-row .s b { color: var(--text-2); font-weight: 650; }
+
+.icon-btn.play {
+  background: var(--elevated);
+  color: var(--text);
+  flex: none;
+}
+.icon-btn.play:hover { background: var(--accent); color: var(--text-on-accent); }
+.icon-btn.play.sm { width: 30px; height: 30px; }
+
+/* ── picking: a song for a render, or a render for a song ─────────────────── */
+
+.pick-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  margin-top: var(--s2);
+  /* Its own scroll, so the sheet keeps its buttons on screen with fifty songs in it. */
+  padding-right: 2px;
+}
+
+.pick-row {
+  display: flex; align-items: center; gap: var(--s3);
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--fast), border-color var(--fast);
+}
+.pick-row:hover { background: var(--hover); border-color: var(--line); }
+.pick-row .grow { min-width: 0; flex: 1; display: block; }
+.pick-row .t { display: block; font-weight: 650; }
+.pick-row .s { display: block; font-size: 12px; color: var(--text-3); }
+
+.pick-row.new {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+.pick-row.new:hover { background: rgba(84, 179, 122, 0.2); }
+.pick-plus {
+  display: grid; place-items: center;
+  width: 38px; height: 38px; flex: none;
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 20px; font-weight: 600; line-height: 1;
+}
+
+.pick-go {
+  flex: none;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-3);
+  padding: 5px var(--s3);
+  border-radius: var(--r-pill);
+  background: var(--elevated);
+}
+.pick-row:hover .pick-go { background: var(--accent); color: var(--text-on-accent); }
+
+.cover.sm { width: 38px; height: 38px; }
+
+/* ── how many are still waiting, on the rail ──────────────────────────────── */
+
+.nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 19px;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  /* On a phone the buttons come off the row rather than squeezing the name to nothing. */
+  .render-row { flex-wrap: wrap; }
+  .render-row .grow { flex: 1 1 60%; }
+  .render-row .btn { flex: 1 1 auto; }
+}

@@ -215,6 +215,10 @@ function openSlotMenu(anchor, slot, ctx, done) {
     <button class="menu-row add" data-upload>
       <span class="tagline">+</span><span class="grow">Upload a render</span>
     </button>
+    ${J.state.modules.includes("renders") ? `
+      <button class="menu-row add" data-fromlist>
+        <span class="tagline">&darr;</span><span class="grow">Take one from the renders list</span>
+      </button>` : ""}
     ${ctx.presets.length ? `<div class="menu-group">Sound</div>
       ${ctx.presets.map((p) => `
         <button class="menu-row ${held.preset && held.preset.id === p.id ? "on" : ""}"
@@ -250,6 +254,12 @@ function openSlotMenu(anchor, slot, ctx, done) {
     if (e.target.closest("[data-upload]")) {
       close();
       J.$("#renderPick").click();
+      return;
+    }
+    if (e.target.closest("[data-fromlist]")) {
+      close();
+      const made = await J.renders.pickFor(ctx.song);
+      if (made) J.router.reload();
       return;
     }
     const row = e.target.closest("[data-version], [data-preset]");

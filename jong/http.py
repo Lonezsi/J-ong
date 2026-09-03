@@ -104,6 +104,59 @@ def resolve(method, path):
     return None, {}
 
 
+class Body:
+    """The request body, which remembers how much of it has been read.
+
+    Whether a handler reads the body is the handler's business. What is not is leaving
+    unread bytes in the socket: this server speaks HTTP/1.1, so a browser reuses one
+    connection for many requests, and anything left over gets parsed as the start of the
+    next one. The browser is then told 501 for a request it made perfectly well, at a
+    moment that has nothing to do with the request that actually caused it.
+
+    Most routes hit this. "Put this render back", "make this version current" and
+    "delete this song" are all sent with a JSON body by the browser and have no reason
+    to read it.
+    """
+
+    #: Worth draining to keep a connection alive. Past this, closing beats reading a
+    #: refused upload all the way to the end out of politeness.
+    DRAIN_LIMIT = 1024 * 1024
+
+    def __init__(self, rfile, length):
+        self._rfile = rfile
+        self.remaining = max(0, length)
+
+    def read(self, size=-1):
+        if self.remaining <= 0:
+            return b""
+        if size is None or size < 0:
+            size = self.remaining
+        chunk = self._rfile.read(min(size, self.remaining))
+        self.remaining -= len(chunk)
+        return chunk
+
+    def readline(self, size=-1):
+        if self.remaining <= 0:
+            return b""
+        limit = self.remaining if size is None or size < 0 else min(size, self.remaining)
+        line = self._rfile.readline(limit)
+        self.remaining -= len(line)
+        return line
+
+    def finish(self):
+        """Swallow whatever is left. False means the connection has to be closed."""
+        if self.remaining <= 0:
+            return True
+        if self.remaining > self.DRAIN_LIMIT:
+            return False
+        while self.remaining > 0:
+            chunk = self._rfile.read(min(CHUNK, self.remaining))
+            if not chunk:
+                return False
+            self.remaining -= len(chunk)
+        return True
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "J-ong"
     protocol_version = "HTTP/1.1"
@@ -213,23 +266,36 @@ class Handler(BaseHTTPRequestHandler):
                     return  # the player seeked away or the tab closed
 
     # ── verbs ────────────────────────────────────────────────────────────────
+    def _serve(self, method):
+        """Handle one request and leave the connection fit for the next one."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        self.body = Body(self.rfile, length)
+        try:
+            self._dispatch(method)
+        finally:
+            if not self.body.finish():
+                self.close_connection = True
+
     def do_GET(self):
-        self._dispatch("GET")
+        self._serve("GET")
 
     def do_HEAD(self):
-        self._dispatch("GET")
+        self._serve("GET")
 
     def do_POST(self):
-        self._dispatch("POST")
+        self._serve("POST")
 
     def do_PUT(self):
-        self._dispatch("PUT")
+        self._serve("PUT")
 
     def do_PATCH(self):
-        self._dispatch("PATCH")
+        self._serve("PATCH")
 
     def do_DELETE(self):
-        self._dispatch("DELETE")
+        self._serve("DELETE")
 
     def _locked_out(self, path):
         """Is this request allowed through the door.
@@ -268,7 +334,8 @@ class Handler(BaseHTTPRequestHandler):
         handler, params = resolve(method, path)
         if not handler:
             return self._json({"error": "no such endpoint", "path": path}, 404)
-        request = Request(method, path, query, self.headers, self.rfile, params)
+        request = Request(method, path, query, self.headers,
+                          getattr(self, "body", self.rfile), params)
         # Used only to tell one guesser from another when rate limiting.
         request.client = self.client_address[0] if self.client_address else "local"
         try:

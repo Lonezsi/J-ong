@@ -7,7 +7,7 @@ call, and neither of them needs a multipart encoder.
 import os
 import time
 
-from .. import db, blobs, config, audio_meta
+from .. import db, blobs, config, audio_meta, registry
 from ..wire import Error, Response, as_int
 from . import songs
 
@@ -48,6 +48,31 @@ def list_versions(req):
     return {"versions": rows, "current_version_id": song["current_version_id"]}
 
 
+def add_stored(song_id, digest, ext, size, duration=0.0, bitrate=0,
+               label="", filename="", source_path=""):
+    """Make a version out of bytes that are already in the blob store.
+
+    An upload calls this once the body has landed, and the renders list calls it when a
+    render that arrived earlier is finally given a home. Nothing is copied either way:
+    the blob is content addressed, so a version is a row pointing at bytes that already
+    exist. Returns (version, was_already_there).
+    """
+    same = db.one("SELECT * FROM versions WHERE song_id = ? AND digest = ?",
+                  (song_id, digest))
+    if same:
+        return same, True
+    row = db.one("SELECT MAX(n) AS n FROM versions WHERE song_id = ?", (song_id,))
+    next_n = (row["n"] or 0) + 1 if row else 1
+    version_id = db.insert("versions", {
+        "song_id": song_id, "n": next_n, "digest": digest, "ext": ext,
+        "size": size, "duration": duration or 0.0, "bitrate": bitrate or 0,
+        "label": label or "", "filename": filename or "",
+        "source_path": source_path or "", "created_at": time.time()})
+    db.update("songs", song_id, {"current_version_id": version_id,
+                                 "updated_at": time.time()})
+    return get(version_id), False
+
+
 def upload(req):
     """Store one render. The song must already exist; the client creates it first if
     it has decided this is not a new take of something already here."""
@@ -80,19 +105,11 @@ def upload(req):
         except ValueError:
             duration = 0.0
 
-    row = db.one("SELECT MAX(n) AS n FROM versions WHERE song_id = ?", (song["id"],))
-    next_n = (row["n"] or 0) + 1 if row else 1
-    version_id = db.insert("versions", {
-        "song_id": song["id"], "n": next_n, "digest": digest, "ext": ext,
-        "size": size, "duration": duration, "bitrate": meta["bitrate"],
-        "label": (req.headers.get("X-Label") or "").strip(),
-        "filename": filename,
-        "source_path": (req.headers.get("X-Source-Path") or "").strip(),
-        "created_at": time.time()})
-
-    db.update("songs", song["id"], {"current_version_id": version_id,
-                                    "updated_at": time.time()})
-    return {"version": get(version_id), "duplicate": False}
+    version, _ = add_stored(
+        song["id"], digest, ext, size, duration, meta["bitrate"],
+        label=(req.headers.get("X-Label") or "").strip(), filename=filename,
+        source_path=(req.headers.get("X-Source-Path") or "").strip())
+    return {"version": version, "duplicate": False}
 
 
 def have(req):
@@ -151,6 +168,11 @@ def delete_version(req):
         db.update("songs", song["id"], {"current_version_id": newest["id"] if newest else None})
     # Only drop the bytes when no version anywhere still points at them.
     still = db.one("SELECT id FROM versions WHERE digest = ? LIMIT 1", (version["digest"],))
+    if not still and registry.has("renders"):
+        # A render sitting in the list plays from the same bytes. Deleting a version made
+        # from it must not leave that entry pointing at nothing.
+        still = db.one("SELECT id FROM renders WHERE digest = ? LIMIT 1",
+                       (version["digest"],))
     if not still:
         blobs.delete(version["digest"])
     return {"deleted": version["id"]}

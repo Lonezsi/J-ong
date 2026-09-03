@@ -320,13 +320,34 @@ def cmd_render(cfg, server, args):
 
     print("\n%d rendered." % len(done))
     for audio in done:
-        send_one(cfg, server, audio, args.yes)
+        send_render(cfg, server, audio)
     if failed:
         print("\n%d did not render:" % len(failed))
         for project, why in failed:
             print("  %s" % os.path.basename(project))
             print("      %s" % why)
     return 0
+
+
+def send_render(cfg, server, path):
+    """Put a fresh render in the library's renders list.
+
+    Not straight onto a song. Which song a render belongs to is a question worth asking
+    while looking at the library rather than at a console that is about to close, and a
+    batch of forty renders is forty questions nobody wants in a row. They go into a list
+    and wait there until they are told.
+    """
+    name = os.path.basename(path)
+    try:
+        result = server.upload("/api/renders", path,
+                               {"X-Filename": name, "X-Source-Path": path,
+                                "X-Origin": "fl"})
+    except Exception as e:
+        print("  could not send %s: %s" % (name, e))
+        return False
+    print("  %s %s" % (name, "is waiting in Renders" if result.get("added")
+                              else "was already there"))
+    return True
 
 
 def cmd_flpath(cfg, server, args):

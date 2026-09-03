@@ -81,6 +81,7 @@
 
 /* A read only tag, not a control. */
 .tag {
+  white-space: nowrap;        /* "43 waiting" is one thing, never two lines */
   display: inline-flex; align-items: center; gap: 5px;
   height: 24px; padding: 0 10px;
   border-radius: var(--r-pill);

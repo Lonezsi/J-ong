@@ -62,19 +62,37 @@ J.markNav = function (view) {
 const NAV_ICONS = {
   library: '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" fill="none"/></svg>',
   sync: '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 7h6l2 2h10v10H3z" stroke="currentColor" stroke-width="1.7" fill="none" stroke-linejoin="round"/></svg>',
+  renders: '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 3v10m0 0l3.5-3.5M12 13L8.5 9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>',
   settings: '<svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7" fill="none"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
 };
 
 async function buildRail(state) {
   const nav = J.$("#nav");
   const items = [["library", "Library"]];
+  if (state.modules.includes("renders")) items.push(["renders", "Renders"]);
   if (state.modules.includes("sync")) items.push(["sync", "Folders"]);
   items.push(["settings", "Settings"]);
   nav.innerHTML = items.map(([view, label]) =>
     `<a href="#/${view === "library" ? "" : view}" data-link data-view="${view}">
-       ${NAV_ICONS[view] || ""}<span>${label}</span></a>`).join("");
+       ${NAV_ICONS[view] || ""}<span>${label}</span>
+       ${view === "renders" ? `<span class="nav-badge" id="renderBadge" hidden></span>` : ""}</a>`).join("");
 
+  refreshRenderBadge();
   await refreshRailAlbums(state);
+}
+
+/* How many renders are still waiting to be told what they are. Read from the server
+ * rather than counted in the page, because the desktop client adds to that list too. */
+async function refreshRenderBadge() {
+  const badge = document.getElementById("renderBadge");
+  if (!badge) return;
+  try {
+    const data = await J.get("/api/renders");
+    badge.textContent = data.waiting || "";
+    badge.hidden = !data.waiting;
+  } catch (e) {
+    badge.hidden = true;
+  }
 }
 
 async function refreshRailAlbums(state) {
@@ -173,6 +191,7 @@ async function boot() {
   });
 
   J.on("albums:changed", () => refreshRailAlbums(J.state));
+  J.on("renders:changed", refreshRenderBadge);
   J.on("settings:changed", async () => {
     const fresh = await J.get("/api/state");
     J.state.settings = fresh.settings;

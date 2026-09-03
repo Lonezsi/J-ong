@@ -290,7 +290,9 @@
 }
 .deck-window {
   flex: 1;
-  max-width: 640px;
+  /* Wide enough that a long line of a verse is a line rather than a wrap. The cards are
+     the middle of the page, so they get the room the page has. */
+  max-width: 940px;
   overflow: hidden;
   border-radius: var(--r-lg);
   touch-action: pan-y;          /* vertical scrolling still belongs to the page */
@@ -309,7 +311,7 @@
   transition: opacity var(--med), transform var(--med);
 }
 .lyric-card.on { opacity: 1; transform: none; }
-.lyric-card.reading { border-color: rgba(217, 164, 65, 0.4); }
+.lyric-card.reading { border-color: var(--accent-line); }
 .lyric-card.editing { opacity: 1; transform: none; }
 
 .card-title {
