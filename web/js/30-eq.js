@@ -238,52 +238,69 @@ J.eq = (function () {
       onChange(data);
     }
 
+    /* A finger landing on the curve is usually trying to scroll past it.
+     *
+     * So a touch only becomes an edit once it has been judged to be one: aimed straight
+     * at an existing node, or held still, or moved across rather than up. A mouse still
+     * acts the instant it goes down, because a mouse cannot scroll by dragging. */
     canvas.addEventListener("pointerdown", (e) => {
       if (e.button === 2) return;
       const point = at(e);
       const band = nodeAt(point);
-      if (band) {
-        selected = band.id;
-        onSelect(band.id);
-        drag = { id: band.id, moved: false, from: point };
-        canvas.setPointerCapture(e.pointerId);
-        canvas.classList.add("dragging");
-      } else {
-        // Empty space: put a band here and start dragging it in the same motion. The
-        // node lands under the pointer that asked for it, so one gesture places it.
-        const band = addAt(point);
-        drag = { id: band.id, moved: false, from: point, fresh: true };
-        canvas.setPointerCapture(e.pointerId);
-        canvas.classList.add("dragging");
-      }
+
+      const move = (event) => {
+        const where = at(event);
+        const held = data.bands.find((b) => b.id === (drag && drag.id));
+        if (!held) return;
+        drag.moved = true;
+        held.freq = Math.round(J.clamp(xToF(where.x), F_MIN, F_MAX) * 10) / 10;
+        if (!FLAT.has(held.type)) {
+          held.gain = Math.round(J.clamp(yToG(where.y), -range, range) * 10) / 10;
+        }
+        commit();
+      };
+
+      J.gesture.begin(e, {
+        target: canvas,
+        // Landing on a node is unambiguous: nobody aims at a four pixel dot by accident.
+        aimed: !!band,
+        onStart() {
+          if (band) {
+            selected = band.id;
+            onSelect(band.id);
+            drag = { id: band.id, moved: false, from: point };
+          } else {
+            // Empty space: put a band here and drag it in the same motion, so one
+            // gesture places it exactly where it was asked for.
+            const made = addAt(point);
+            drag = { id: made.id, moved: false, from: point, fresh: true };
+          }
+          canvas.classList.add("dragging");
+          canvas.style.touchAction = "none";     // now the gesture is ours to keep
+        },
+        onMove: move,
+        onEnd() {
+          drag = null;
+          canvas.classList.remove("dragging");
+          canvas.style.touchAction = "";
+        },
+        // A deliberate tap on a node selects it without needing to be held.
+        onTap() {
+          if (!band) return;
+          selected = band.id;
+          onSelect(band.id);
+          draw();
+        },
+      });
     });
 
     canvas.addEventListener("pointermove", (e) => {
+      if (drag || e.pointerType === "touch") return;
       const point = at(e);
-      if (!drag) {
-        const band = nodeAt(point);
-        const id = band ? band.id : null;
-        if (id !== hover) { hover = id; canvas.style.cursor = id ? "grab" : "crosshair"; }
-        return;
-      }
-      const band = data.bands.find((b) => b.id === drag.id);
-      if (!band) return;
-      drag.moved = true;
-      band.freq = Math.round(J.clamp(xToF(point.x), F_MIN, F_MAX) * 10) / 10;
-      if (!FLAT.has(band.type)) {
-        band.gain = Math.round(J.clamp(yToG(point.y), -range, range) * 10) / 10;
-      }
-      commit();
+      const band = nodeAt(point);
+      const id = band ? band.id : null;
+      if (id !== hover) { hover = id; canvas.style.cursor = id ? "grab" : "crosshair"; }
     });
-
-    const endDrag = (e) => {
-      if (!drag) return;
-      drag = null;
-      canvas.classList.remove("dragging");
-      try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
-    };
-    canvas.addEventListener("pointerup", endDrag);
-    canvas.addEventListener("pointercancel", endDrag);
 
     canvas.addEventListener("wheel", (e) => {
       const point = at(e);

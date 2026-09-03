@@ -133,6 +133,18 @@ J.audio = (function () {
     context,
     deck,
     wire,
+
+    /* The head of one deck's chain.
+     *
+     * The compositor connects its scheduled clips here rather than to the destination,
+     * so arranged playback goes through the same filters, limiter and gain as a plain
+     * one does. Feeding both decks from one set of sources is what lets A and B swap
+     * equalisers on the same audio with nothing restarting. */
+    inputOf(slot) {
+      const entry = wire(slot);
+      return entry ? entry.input : null;
+    },
+
     get analyser() { return analyser; },
     get ready() { return !!ctx; },
 

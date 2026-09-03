@@ -160,10 +160,29 @@ J.views.renders = {
     const audio = new Audio();
     audio.addEventListener("ended", () => { playing = null; draw(); });
 
+    let shapes = {};
+
     async function load() {
       const data = await J.get("/api/renders" + (showAll ? "?all=1" : ""));
       rows = data.renders || [];
       draw();
+      await loadShapes();
+    }
+
+    /* Fetched after the list is already on screen, and in one call rather than one per
+     * song. The rows are the point; the pictures are a nicety, and fifty round trips for
+     * decoration is what made the list feel slow. */
+    let shapesLoaded = false;
+    async function loadShapes() {
+      if (shapesLoaded || !J.state.modules.includes("arrange")) return;
+      shapesLoaded = true;
+      try {
+        const data = await J.get("/api/arrangements/shapes");
+        shapes = data.shapes || {};
+        if (Object.keys(shapes).length) draw();
+      } catch (e) {
+        shapes = {};
+      }
     }
 
     function card(render) {
@@ -191,7 +210,21 @@ J.views.renders = {
           <button class="icon-btn" data-act="dismiss" aria-label="Throw this render away">
             <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
           </button>
+          ${shape(render)}
         </div>`;
+    }
+
+    /* The shape of the arrangement this render ended up in, if it is in one.
+     *
+     * Read only on purpose. It is here so a render is recognisable at a glance, the way
+     * you know a song by the shape of its sections, and reaching in to edit an
+     * arrangement from a list of loose files would be the wrong place to do it. */
+    function shape(render) {
+      const parts = shapes[render.song_id];
+      if (!parts || !parts.length) return "";
+      return `<div class="render-shape" aria-hidden="true">${parts.map((part) => `
+        <span class="seg" style="--grow:${Math.max(1, part.beats)};--hue:${part.hue}"></span>
+      `).join("")}</div>`;
     }
 
     function draw() {

@@ -62,6 +62,12 @@ $env:JONG_HOST = '0.0.0.0'
 $env:JONG_PORT = '7900'
 
 Say ("starting with {0}" -f $py)
+
+# Straight to a file rather than through Tee-Object.
+#
+# Piping put a PowerShell process between the server and its log. Anything that upset
+# the pipe took the server with it, and there is nobody sitting at this machine to
+# notice, so the library simply stopped answering. A redirect has nothing in the middle.
 $out = Join-Path $LogDir 'host-jong-out.log'
-& $py -u (Join-Path $Root 'server.py') *>&1 | Tee-Object -FilePath $out -Append
+& $py -u (Join-Path $Root 'server.py') *>> $out
 Say ("server exited with {0}" -f $LASTEXITCODE)

@@ -2,6 +2,7 @@
 
 .render-row {
   display: flex; align-items: center; gap: var(--s3);
+  flex-wrap: wrap;              /* so the arrangement strip gets a line of its own */
   padding: var(--s3);
   border-radius: var(--r-md);
   background: var(--surface-2);

@@ -33,6 +33,7 @@ MODULES = [
     "lyrics",
     "albums",
     "sound",
+    "arrange",
     # "youtube",  uploading happens at the moment you do it, and the EQ is never
     #             part of what goes up, so there was nothing here worth recording
     "renders",

@@ -15,14 +15,20 @@ J.views.song = {
     const songId = params.id;
     const has = (name) => J.state.modules.includes(name);
 
-    const [songData, versionData, albumData, artData, titleData, soundData] = await Promise.all([
-      J.get(`/api/songs/${songId}`),
-      has("versions") ? J.get(`/api/songs/${songId}/versions`) : Promise.resolve({ versions: [] }),
-      has("albums") ? J.get(`/api/songs/${songId}/albums`) : Promise.resolve({ albums: [] }),
-      has("artwork") ? J.get(`/api/songs/${songId}/artwork`) : Promise.resolve({ artwork: [] }),
-      J.get(`/api/songs/${songId}/titles`).catch(() => ({ previous: [] })),
-      has("sound") ? J.get(`/api/songs/${songId}/sound`) : Promise.resolve({ presets: [] }),
-    ]);
+    const [songData, versionData, albumData, artData, titleData, soundData, arrangeData] =
+      await Promise.all([
+        J.get(`/api/songs/${songId}`),
+        has("versions") ? J.get(`/api/songs/${songId}/versions`) : Promise.resolve({ versions: [] }),
+        has("albums") ? J.get(`/api/songs/${songId}/albums`) : Promise.resolve({ albums: [] }),
+        has("artwork") ? J.get(`/api/songs/${songId}/artwork`) : Promise.resolve({ artwork: [] }),
+        J.get(`/api/songs/${songId}/titles`).catch(() => ({ previous: [] })),
+        has("sound") ? J.get(`/api/songs/${songId}/sound`) : Promise.resolve({ presets: [] }),
+        // In the same batch, so knowing whether this song plays as arranged costs
+        // nothing and can be acted on straight away.
+        has("arrange") ? J.get(`/api/songs/${songId}/arrangement`).catch(() => ({}))
+                       : Promise.resolve({}),
+      ]);
+    if (has("arrange")) J.arrange.adopt(songId, arrangeData.arrangement);
 
     const song = songData.song;
     const versions = versionData.versions || [];
@@ -33,7 +39,13 @@ J.views.song = {
     const current = versions.find((v) => v.id === song.current_version_id) || versions[0];
     const cover = artwork.length ? `/api/artwork/${artwork[0].id}/image` : null;
 
-    const ctx = { song, songId, versions, current, artwork, presets, has };
+    const ctx = {
+      song, songId, versions, current, artwork, presets, has,
+      /* Which render everything on this page is about. The compositor lays out one
+       * render, and that is the one the page is showing rather than whatever the
+       * player happens to be holding from another song. */
+      currentVersion: () => current || versions[0] || null,
+    };
     J.songCtx = ctx;
 
     root.innerHTML = `
@@ -73,6 +85,14 @@ J.views.song = {
                 ${current && current.duration ? `<span class="dot"></span><span>${J.time(current.duration)}</span>` : ""}
                 <span class="dot"></span>
                 <span>${versions.length} render${versions.length === 1 ? "" : "s"}</span>
+                ${has("versions") ? `
+                  <button class="fact-add" data-act="addrender" title="Add a render"
+                          aria-label="Add a render">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+                         stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                      <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                  </button>` : ""}
                 ${albums.length ? '<span class="dot"></span>' : ""}
                 ${albums.map((a) => `<a href="#/album/${a.id}" data-link>${J.esc(a.title)}</a>`)
                   .join('<span class="dot"></span>')}
@@ -84,20 +104,39 @@ J.views.song = {
                 <button class="slot-pick" data-slot="A"><span class="k">A</span><span class="v">not set</span>
                   <svg class="caret" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
-                <button class="ab-switch" id="abSwitch" title="Swap A and B (X)" aria-label="Swap A and B">
+                <button class="ab-switch" id="abSwitch" title="Swap A and B (X)" aria-label="Swap A and B" hidden>
                   <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor"
                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M17 3l4 4-4 4"/><path d="M21 7H8a4 4 0 0 0-4 4"/>
                     <path d="M7 21l-4-4 4-4"/><path d="M3 17h13a4 4 0 0 0 4-4"/>
                   </svg>
                 </button>
-                <button class="slot-pick" data-slot="B"><span class="k">B</span><span class="v">not set</span>
+                <button class="slot-pick" data-slot="B" hidden><span class="k">B</span><span class="v">not set</span>
                   <svg class="caret" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>
                 </button>
+                <button class="btn sm ghost ab-add" data-slot="B" title="Listen to two takes side by side">
+                  Compare
+                </button>
+                ${has("arrange") ? `
+                  <button class="icon-btn comp-toggle" id="compToggle"
+                          title="Compositor: cut and reorder this render by the bar"
+                          aria-label="Compositor" aria-expanded="false">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                         stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+                      <rect x="3" y="7" width="5" height="10" rx="1.4"/>
+                      <rect x="10" y="9" width="4" height="6" rx="1.2"/>
+                      <rect x="16" y="6" width="5" height="12" rx="1.4"/>
+                    </svg>
+                  </button>` : ""}
               </div>` : ""}
           </div>
         </div>
       </div>
+
+      ${has("arrange") ? `
+        <div class="comp-drawer" id="compDrawer">
+          <div class="comp-inner"><div class="comp-body" id="compBody"></div></div>
+        </div>` : ""}
 
       ${has("lyrics") ? '<div class="block" id="lyricsBlock"></div>' : ""}
       ${has("sound") ? '<div class="block" id="soundBlock"></div>' : ""}
@@ -118,6 +157,17 @@ J.views.song = {
     wireTitle(root, ctx, previous);
     wireHero(root, ctx);
     wireAB(root, ctx);
+    if (has("arrange")) wireCompositor(root, ctx);
+
+    /* If this song plays as arranged, start reading the render now.
+     *
+     * It is the one genuinely slow thing in the app, it only has to happen once, and
+     * doing it while the page is being looked at means the play button is usually
+     * instant rather than usually a wait. */
+    if (has("arrange") && J.arrange.state.enabled
+        && J.arrange.state.songId === Number(ctx.songId)) {
+      J.arrange.warm();
+    }
 
     if (has("lyrics")) await J.blockLyrics(J.$("#lyricsBlock", root), ctx);
     if (has("sound")) await J.blockSound(J.$("#soundBlock", root), ctx);
@@ -153,6 +203,11 @@ function wireAB(root, ctx) {
   const bar = J.$("#abInline", root);
   if (!bar) return;
 
+  /* B is not a thing until there is a second take to put in it.
+   *
+   * Showing an empty B chip and a swap arrow next to it offered two controls that could
+   * not do anything, on the screen you spend the most time on. Until a B is chosen there
+   * is one button, and it says what it is for. */
   function paint() {
     const playing = J.player.state.song && J.player.state.song.id === ctx.song.id;
     for (const slot of ["A", "B"]) {
@@ -165,6 +220,14 @@ function wireAB(root, ctx) {
       J.$(".v", chip).innerHTML = label;
       chip.classList.toggle("live", playing && J.player.state.active === slot && !!held.version);
     }
+
+    const hasB = playing && !!J.player.state.slots.B.version;
+    const bChip = J.$('.slot-pick[data-slot="B"]', bar);
+    const swap = J.$("#abSwitch", bar);
+    const add = J.$(".ab-add", bar);
+    if (bChip) bChip.hidden = !hasB;
+    if (swap) swap.hidden = !hasB;
+    if (add) add.hidden = hasB;
   }
 
   bar.addEventListener("click", async (e) => {
@@ -175,6 +238,9 @@ function wireAB(root, ctx) {
       paint();
       return;
     }
+    // Compare opens the same menu the B chip would, so there is one way to fill B.
+    const add = e.target.closest(".ab-add");
+    if (add) { openSlotMenu(add, "B", ctx, paint); return; }
     const chip = e.target.closest(".slot-pick");
     if (!chip) return;
     openSlotMenu(chip, chip.dataset.slot, ctx, paint);
@@ -188,6 +254,65 @@ function wireAB(root, ctx) {
 }
 
 /* One menu holding both things a slot carries: which render, and which sound. */
+/* The compositor drawer.
+ *
+ * It hangs off one button next to A and B, and it is closed until asked for. Opening it
+ * for the first time loads the arrangement and decodes the render, which is the slow
+ * part, so the panel says what it is doing rather than sitting blank.
+ *
+ * Turning it on is a separate act from opening it. Looking at the shape of a song should
+ * not change how the song plays.
+ */
+function wireCompositor(root, ctx) {
+  const button = J.$("#compToggle", root);
+  const drawer = J.$("#compDrawer", root);
+  const body = J.$("#compBody", root);
+  if (!button || !drawer || !body) return;
+
+  let panel = null;
+  let open = false;
+
+  const paintButton = () => {
+    button.classList.toggle("on", J.arrange.state.enabled);
+    button.setAttribute("aria-expanded", String(open));
+    button.title = J.arrange.state.enabled
+      ? "Compositor is on: this song plays as arranged"
+      : "Compositor: cut and reorder this render by the bar";
+  };
+
+  async function show() {
+    open = true;
+    drawer.classList.add("open");
+    paintButton();
+    if (panel) return;
+
+    body.innerHTML = `<div class="empty comp-empty"><h3>Reading the render…</h3>
+      <p>The whole file has to be in hand before it can be drawn and cut.</p></div>`;
+    const version = ctx.currentVersion();
+    if (version) {
+      // Decoded up front: every clip is drawn from the same peaks, and a panel that
+      // appears with no waveform in it looks broken rather than busy.
+      await J.try(() => J.arrange.buffer(version));
+      if (!J.arrange.state.versionId) J.arrange.state.versionId = version.id;
+    }
+    panel = J.compositor.mount(body, ctx);
+  }
+
+  function hide() {
+    open = false;
+    drawer.classList.remove("open");
+    paintButton();
+  }
+
+  button.addEventListener("click", () => (open ? hide() : show()));
+  J.on("arrange:change", paintButton);
+  paintButton();
+
+  // Deliberately not opened on its own. Opening it reads the whole render, and doing
+  // that on every visit to a song made the page feel broken.
+}
+
+
 function openSlotMenu(anchor, slot, ctx, done) {
   const existing = document.querySelector(".slot-menu");
   if (existing) { existing.remove(); if (existing.dataset.slot === slot) return; }
@@ -402,6 +527,41 @@ function wireHero(root, ctx) {
     const act = e.target.closest("[data-act]");
     if (!act) return;
     if (act.dataset.act === "upload") J.$("#renderPick", root).click();
+
+    /* The plus beside the render count. Two ways in, because a render either comes off
+     * this machine or is already waiting in the list. */
+    if (act.dataset.act === "addrender") {
+      if (!J.state.modules.includes("renders")) { J.$("#renderPick", root).click(); return; }
+      const pick = await J.sheet({
+        title: "Add a render",
+        sub: `It becomes v${(ctx.versions.length || 0) + 1} of ${ctx.song.title}.`,
+        confirm: "",
+        cancel: "Not now",
+        body: `<div class="pick-list">
+          <button class="pick-row" data-how="file">
+            <span class="pick-plus">&uarr;</span>
+            <span class="grow"><span class="t">Upload a file</span>
+            <span class="s">From this computer</span></span>
+          </button>
+          <button class="pick-row" data-how="list">
+            <span class="pick-plus">&darr;</span>
+            <span class="grow"><span class="t">Take one from Renders</span>
+            <span class="s">Something already waiting in the library</span></span>
+          </button>
+        </div>`,
+        onMount(sheet, close) {
+          sheet.addEventListener("click", (event) => {
+            const hit = event.target.closest("[data-how]");
+            if (hit) close({ how: hit.dataset.how });
+          });
+        },
+      });
+      if (!pick) return;
+      if (pick.how === "file") { J.$("#renderPick", root).click(); return; }
+      const made = await J.renders.pickFor(ctx.song);
+      if (made) J.router.reload();
+      return;
+    }
     if (act.dataset.act === "albums") J.pickAlbums(ctx.song);
     if (act.dataset.act === "delete") {
       const sure = await J.confirm(

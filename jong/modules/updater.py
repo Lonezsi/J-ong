@@ -82,6 +82,8 @@ def check(req):
 
 
 def apply(req):
+    global _COMMIT
+    _COMMIT = None      # the pull moves HEAD; read it again next time
     if not _is_repo():
         raise Error("This copy of J-ong is not a git checkout, so it cannot update itself.", 409)
     dirty, _ = _git("status", "--porcelain")
@@ -112,11 +114,31 @@ def apply(req):
     }
 
 
+#: The commit this process is running, worked out once.
+#:
+#: This is on /api/state, which the page asks for on every load and after every settings
+#: change, and it used to shell out to git each time: eighty milliseconds of process
+#: start up to answer a question whose answer cannot change while the process runs. An
+#: update rewrites it, and a restart follows anyway.
+_COMMIT = None
+
+
+def _commit():
+    global _COMMIT
+    if _COMMIT is None:
+        if not _is_repo():
+            _COMMIT = False
+        else:
+            local, _ = _git("rev-parse", "--short", "HEAD")
+            _COMMIT = local or "unknown"
+    return _COMMIT
+
+
 def SUMMARY():
-    if not _is_repo():
+    commit = _commit()
+    if commit is False:
         return {"git": False}
-    local, _ = _git("rev-parse", "--short", "HEAD")
-    return {"git": True, "commit": local or "unknown"}
+    return {"git": True, "commit": commit}
 
 
 def ROUTES():

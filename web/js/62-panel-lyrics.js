@@ -139,14 +139,39 @@ J.blockLyrics = async function (block, ctx) {
       const text = (viewing && i === at) ? viewing.text : s.text;
       const title = J.mdTitle(text, s.name);
       const body = J.mdBody(text);
-      return `<article class="lyric-card ${i === at ? "on" : ""} ${viewing && i === at ? "reading" : ""}">
+      return `<article class="lyric-card ${i === at ? "on" : ""} ${viewing && i === at ? "reading" : ""}"
+               data-sheet="${s.id}">
         <h3 class="card-title">${J.esc(title)}</h3>
         <div class="card-body ${text ? "" : "empty-words"}"
              ${viewing ? "" : 'data-act="edit" title="Click to edit"'}>${
           text ? J.md(body) : "Nothing written yet. Click here to start."}</div>
+        ${partChip(s)}
       </article>`;
     }).join("");
     place(false);
+  }
+
+  /* Which section of the arrangement these words belong to.
+   *
+   * Only offered when the compositor has actually laid the song out. Before that there
+   * are no sections to point at, and a control that can only say "none" is noise. */
+  function partChip(sheet) {
+    if (!J.arrange || !J.arrange.state.parts.length) return "";
+    const part = J.arrange.partForSheet(sheet.id);
+    return `<button class="card-part ${part ? "set" : ""}" data-part-for="${sheet.id}"
+              style="--hue:${part ? part.hue : 140}"
+              title="Which section of the arrangement these words are for">
+              <span class="dot"></span>${part ? J.esc(part.name) : "no section"}
+            </button>`;
+  }
+
+  /* Light up the card whose section is sounding. Driven by the compositor's playhead
+   * rather than by a timer here, so the two can never disagree. */
+  function sounding(partId) {
+    const sheetId = partId ? J.arrange.state.lyrics[partId] : null;
+    J.$$(".lyric-card", block).forEach((card) => {
+      card.classList.toggle("sounding", !!sheetId && card.dataset.sheet === String(sheetId));
+    });
   }
 
   /* Where the track sits. One card per step, so the maths is the index. */
@@ -288,6 +313,54 @@ J.blockLyrics = async function (block, ctx) {
       await load(true);
     }
   });
+
+  /* Assigning a section to a set of words. */
+  block.addEventListener("click", async (e) => {
+    const chip = e.target.closest("[data-part-for]");
+    if (!chip) return;
+    e.stopPropagation();
+    const sheetId = Number(chip.dataset.partFor);
+    const parts = J.arrange.state.parts;
+    const already = J.arrange.partForSheet(sheetId);
+
+    const chosen = await J.sheet({
+      title: "Which section are these words for?",
+      sub: "The card lights up when that section plays, so you can see the words land.",
+      confirm: "",
+      cancel: "Close",
+      body: `<div class="pick-list">
+        ${parts.map((part) => `
+          <button class="pick-row" data-choose="${part.id}">
+            <span class="pick-plus" style="background:hsl(${part.hue} 45% 45%)">&#9679;</span>
+            <span class="grow truncate">
+              <span class="t truncate">${J.esc(part.name)}</span>
+              <span class="s">${part.beats} beats</span>
+            </span>
+            ${already && already.id === part.id ? '<span class="pick-go">chosen</span>' : ""}
+          </button>`).join("")}
+        ${already ? `<button class="pick-row" data-choose="">
+          <span class="grow"><span class="t">No section</span>
+          <span class="s">Unlink these words</span></span></button>` : ""}
+      </div>`,
+      onMount(sheet, close) {
+        sheet.addEventListener("click", (event) => {
+          const hit = event.target.closest("[data-choose]");
+          if (hit) close({ part: hit.dataset.choose });
+        });
+      },
+    });
+    if (!chosen) return;
+    J.arrange.setLyricsFor(sheetId, chosen.part || null);
+    drawCards();
+  });
+
+  /* The compositor says which section is sounding; the matching card lights up. */
+  const onPlaying = (e) => {
+    if (!block.isConnected) { J.bus.removeEventListener("arrange:playing", onPlaying); return; }
+    sounding(e.detail && e.detail.partId);
+  };
+  J.on("arrange:playing", onPlaying);
+  J.on("arrange:change", () => { if (block.isConnected) drawCards(); });
 
   const onKey = (e) => {
     if (!block.isConnected) { document.removeEventListener("keydown", onKey); return; }

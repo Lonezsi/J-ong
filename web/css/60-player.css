@@ -93,3 +93,27 @@
   .player-right .volume { display: none; }
   :root { --player-h: 116px; }
 }
+
+
+/* ── the one honest wait: reading a whole render for the compositor ───────── */
+
+.preparing {
+  display: flex; align-items: center; gap: var(--s3);
+  width: 100%;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.preparing-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--elevated);
+  overflow: hidden;
+}
+.preparing-fill {
+  display: block; height: 100%; width: 0;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  transition: width 120ms linear;
+}
+.preparing-pct { font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }

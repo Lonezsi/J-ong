@@ -1,0 +1,256 @@
+/* ── the compositor ───────────────────────────────────────────────────────── */
+
+/* The drawer. It is closed by default and takes no room at all when closed, which is
+   what makes it something you open when you need it rather than a permanent panel. */
+.comp-drawer {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows var(--med), opacity var(--fast);
+}
+.comp-drawer > .comp-inner {
+  overflow: hidden;
+  min-height: 0;
+  /* Without this the track's width, which is the whole song in pixels, pushes every
+     ancestor wide and the panel stops scrolling inside itself: a grid or flex item
+     refuses to shrink below its content unless it is told it may. */
+  min-width: 0;
+}
+.comp-drawer.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.comp-drawer.open > .comp-inner {
+  /* Only once open, so the shadow of a clip is not clipped while it is in use. */
+  overflow: visible;
+}
+@media (prefers-reduced-motion: reduce) {
+  .comp-drawer { transition: none; }
+}
+
+.comp-body {
+  min-width: 0;
+  max-width: 100%;
+  margin-top: var(--s4);
+  padding: var(--s4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.comp-head {
+  display: flex; align-items: center; gap: var(--s2);
+  flex-wrap: wrap;
+  margin-bottom: var(--s3);
+}
+.comp-tempo { display: flex; align-items: center; gap: var(--s2); }
+.comp-bpm {
+  display: flex; align-items: baseline; gap: 5px;
+  padding: 0 var(--s2);
+}
+.comp-bpm .field {
+  width: 76px;
+  padding: 6px var(--s2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  text-align: right;
+}
+.comp-bpm span { font-size: 12px; color: var(--text-3); }
+.comp-zoom { display: flex; gap: 2px; }
+.icon-btn.sm { width: 28px; height: 28px; font-size: 15px; }
+
+/* ── the track ────────────────────────────────────────────────────────────── */
+
+.comp-scroll {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: var(--r-md);
+  background: var(--bg-deep);
+  outline: none;
+  /* Held so the clips do not fight the page for a horizontal drag. */
+  overscroll-behavior-x: contain;
+}
+.comp-scroll:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-line); }
+
+.comp-track {
+  position: relative;
+  height: 104px;
+  min-width: 100%;
+}
+.comp-bars {
+  position: absolute; inset: 0;
+  background-repeat: repeat-x;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.comp-clips {
+  position: relative;
+  display: flex;
+  height: 100%;
+  align-items: stretch;
+  padding: var(--s2) 0;
+  gap: 2px;
+}
+
+.comp-clip {
+  position: relative;
+  width: var(--w);
+  min-width: 14px;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: linear-gradient(180deg,
+    hsl(var(--hue) 42% 30%), hsl(var(--hue) 38% 22%));
+  border: 1px solid hsl(var(--hue) 40% 40%);
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  transition: filter var(--fast), box-shadow var(--fast);
+}
+.comp-clip:hover { filter: brightness(1.14); }
+.comp-clip.on { box-shadow: 0 0 0 2px var(--accent); }
+.comp-clip.holding { cursor: grabbing; filter: brightness(1.2); z-index: 2; }
+/* The one being heard right now. */
+.comp-clip.live { box-shadow: inset 0 2px 0 var(--accent-hi); }
+
+.comp-wave {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  opacity: 0.75;
+}
+.comp-name {
+  position: absolute; left: 7px; top: 5px; right: 7px;
+  font-size: 11.5px; font-weight: 650;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.comp-beats {
+  position: absolute; right: 7px; bottom: 4px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+/* Wide enough to hit with a mouse, and wider still on a touch screen. */
+.comp-grip {
+  position: absolute; top: 0; bottom: 0;
+  width: 9px;
+  cursor: ew-resize;
+  z-index: 3;
+}
+.comp-grip.start { left: 0; }
+.comp-grip.end { right: 0; }
+.comp-grip::after {
+  content: ""; position: absolute; top: 30%; bottom: 30%;
+  width: 2px; border-radius: 2px;
+  background: rgba(255, 255, 255, 0.55);
+  left: 50%; transform: translateX(-50%);
+  opacity: 0; transition: opacity var(--fast);
+}
+.comp-clip:hover .comp-grip::after { opacity: 1; }
+
+.comp-playhead {
+  position: absolute; top: 0; bottom: 0; width: 2px;
+  background: var(--accent-hi);
+  box-shadow: 0 0 8px var(--accent);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.comp-foot {
+  display: flex; align-items: center; gap: var(--s3);
+  margin-top: var(--s3);
+  font-size: 12px;
+}
+.comp-hint { opacity: 0.7; }
+.comp-empty { padding: var(--s6) var(--s4); }
+
+/* ── the button that opens it ─────────────────────────────────────────────── */
+
+.comp-onoff {
+  display: inline-flex; align-items: center; gap: var(--s2);
+  margin-left: var(--s2);
+  font-size: 12.5px; font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.comp-toggle.on {
+  background: var(--accent-soft);
+  color: var(--accent-hi);
+}
+
+/* Says out loud that A and B mean something different while this is on. */
+.ab-note {
+  font-size: 10.5px;
+  color: var(--text-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── the read only picture, in the renders list ───────────────────────────── */
+
+.render-shape {
+  display: flex;
+  gap: 1px;
+  /* Its own line under the row. As a flex sibling of the buttons it was squeezed to
+     nothing, which drew ten segments none of which had any width. */
+  flex: 0 0 100%;
+  width: 100%;
+  height: 22px;
+  margin-top: 6px;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  /* Nothing here is clickable. It is there to be recognised, not used. */
+  pointer-events: none;
+  opacity: 0.75;
+}
+.render-shape .seg {
+  flex: var(--grow) 1 0;
+  background: linear-gradient(180deg,
+    hsl(var(--hue) 40% 32%), hsl(var(--hue) 36% 24%));
+}
+.render-shape canvas { width: 100%; height: 100%; display: block; }
+
+/* ── lyrics that know which section they belong to ────────────────────────── */
+
+.card-part {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--text-3);
+  font-size: 12px; font-weight: 600;
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast), border-color var(--fast);
+}
+.card-part:hover { background: var(--hover); color: var(--text); }
+.card-part .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: hsl(var(--hue, 140) 45% 52%);
+}
+.card-part.set { color: var(--text-2); border-color: hsl(var(--hue) 40% 40%); }
+
+/* The card lights up when its section is the one playing. */
+.lyric-card.sounding {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-line), 0 12px 40px rgba(84, 179, 122, 0.14);
+}
+
+@media (max-width: 900px) {
+  /* The spacer would otherwise hold the zoom and detect buttons out on a line of their
+     own miles to the right. On a phone the header is simply two rows. */
+  .comp-head > .grow { flex-basis: 100%; height: 0; }
+  .comp-track { height: 92px; }
+  .comp-grip { width: 16px; }
+  .comp-hint { display: none; }
+  .comp-body { padding: var(--s3); }
+}

@@ -523,3 +523,23 @@ textarea.card-edit {
   .art-tile, .art-add { width: 76px; height: 76px; }
   .time-bar { font-size: 12.5px; }
 }
+
+
+/* ── adding a render from the facts line ──────────────────────────────────── */
+
+.fact-add {
+  display: inline-grid; place-items: center;
+  width: 22px; height: 22px;
+  margin-left: 2px;
+  vertical-align: -5px;
+  border: 0; border-radius: 50%;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background var(--fast), color var(--fast), transform var(--fast);
+}
+.fact-add:hover { background: var(--accent); color: var(--text-on-accent); }
+.fact-add:active { transform: scale(0.9); }
+
+/* Offered instead of an empty B chip and a swap arrow that could not do anything. */
+.ab-add { white-space: nowrap; }

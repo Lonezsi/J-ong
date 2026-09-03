@@ -8,6 +8,7 @@ gives the server.
 """
 import io
 import os
+import sys
 import json
 import time
 import hashlib
@@ -42,6 +43,15 @@ CONTENT_TYPES = {
 }
 
 CHUNK = 256 * 1024
+
+#: Errors that only mean the other end went away.
+#:
+#: A browser cancels a range request every single time the player seeks, and a tab that
+#: closes mid download does the same. Windows raises ConnectionAbortedError for this
+#: where other systems raise ConnectionResetError, which is why catching the other two
+#: was not enough: every seek in a long render printed a full stack trace, the noise
+#: buried real errors, and on the host that output goes through a pipe.
+GONE = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
 
 # Reachable without signing in: the door itself, the stylesheet it wears, and the calls
 # the door has to make. Everything else needs a session when the auth module is loaded.
@@ -171,9 +181,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         for key, value in (extra or {}).items():
             self.send_header(key, value)
-        self.end_headers()
-        if self.command != "HEAD" and body:
-            self.wfile.write(body)
+        try:
+            self.end_headers()
+            if self.command != "HEAD" and body:
+                self.wfile.write(body)
+        except GONE:
+            self.close_connection = True
 
     def _etag_hit(self, etag):
         """Answer 304 when the caller already holds exactly this body.
@@ -262,7 +275,7 @@ class Handler(BaseHTTPRequestHandler):
                 remaining -= len(chunk)
                 try:
                     self.wfile.write(chunk)
-                except (BrokenPipeError, ConnectionResetError):
+                except GONE:
                     return  # the player seeked away or the tab closed
 
     # ── verbs ────────────────────────────────────────────────────────────────
@@ -276,7 +289,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._dispatch(method)
         finally:
-            if not self.body.finish():
+            try:
+                if not self.body.finish():
+                    self.close_connection = True
+            except GONE:
                 self.close_connection = True
 
     def do_GET(self):
@@ -402,9 +418,26 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "not found"}, 404)
 
 
+class Server(ThreadingHTTPServer):
+    """The socket server, quiet about disconnections.
+
+    socketserver prints a full traceback for every exception a handler raises, including
+    the ones that only mean a browser went away. Seeking around a forty megabyte render
+    produced pages of them, which is slow in itself and hides anything that matters.
+    """
+
+    daemon_threads = True
+    #: Otherwise a restart during development hits "address already in use" for a minute.
+    allow_reuse_address = True
+
+    def handle_error(self, request, client_address):
+        kind = sys.exc_info()[0]
+        if kind is not None and issubclass(kind, GONE):
+            return
+        super().handle_error(request, client_address)
+
+
 def serve(host=None, port=None):
     config.ensure_dirs()
     registry.load()
-    server = ThreadingHTTPServer((host or config.HOST, port or config.PORT), Handler)
-    server.daemon_threads = True
-    return server
+    return Server((host or config.HOST, port or config.PORT), Handler)

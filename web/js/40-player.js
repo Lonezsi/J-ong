@@ -18,6 +18,7 @@ J.player = (function () {
     duration: 0,
     position: 0,
     volume: 0.9,
+    preparing: null,      // 0..1 while a render is being read for the compositor
   };
 
   let ticking = null;
@@ -25,6 +26,15 @@ J.player = (function () {
 
   const el = () => J.$("#player");
   const audioOf = (slot) => J.audio.deck(slot).element;
+
+  /* Is the compositor driving playback for the song on screen.
+   *
+   * When it is, the transport belongs to the arrangement: the audio elements stay
+   * paused and the clips are scheduled instead. Everything else about the player, the
+   * scrubber, the volume, the two chips, works exactly as it did. */
+  const arranged = () => !!(J.arrange && J.arrange.state.enabled && state.song
+                            && J.arrange.state.songId === state.song.id
+                            && J.arrange.state.clips.length);
   const activeAudio = () => audioOf(state.active);
   const other = () => (state.active === "A" ? "B" : "A");
 
@@ -56,12 +66,39 @@ J.player = (function () {
   }
 
   function applyGains() {
+    const anywhere = arranged();
     ["A", "B"].forEach((slot) => {
-      J.audio.setDeckGain(slot, slot === state.active && state.slots[slot].version ? 1 : 0);
+      // Arranged, both decks carry the same clips, so a slot is audible on its own
+      // merits rather than on whether someone chose a second version for it.
+      const has = anywhere || state.slots[slot].version;
+      J.audio.setDeckGain(slot, slot === state.active && has ? 1 : 0);
     });
   }
 
   async function startBoth() {
+    if (arranged()) {
+      // Arranged playback needs the whole render decoded, and that is a real wait the
+      // first time. It happens with the button showing what it is doing rather than
+      // behind a press that appears to have done nothing.
+      if (!J.arrange.ready()) {
+        state.preparing = 0;
+        render();
+        const got = await J.try(() => J.arrange.ensure((fraction) => {
+          state.preparing = fraction;
+          paintPreparing();
+        }));
+        state.preparing = null;
+        render();
+        if (!got) return;
+        if (!state.playing) return;        // they gave up while it loaded, which is fair
+      }
+      // The elements must be quiet: the same render coming from two places at once is
+      // a flam, not a mix.
+      ["A", "B"].forEach((slot) => audioOf(slot).pause());
+      const ok = await J.arrange.start();
+      if (!ok) J.toast("The arrangement has nothing to play yet.", "bad");
+      return;
+    }
     const jobs = [];
     ["A", "B"].forEach((slot) => {
       if (!state.slots[slot].version) return;
@@ -71,6 +108,7 @@ J.player = (function () {
   }
 
   function pauseBoth() {
+    if (J.arrange) J.arrange.stop();
     ["A", "B"].forEach((slot) => audioOf(slot).pause());
   }
 
@@ -84,6 +122,20 @@ J.player = (function () {
 
   function tick() {
     ticking = requestAnimationFrame(tick);
+    if (arranged()) {
+      if (!seeking) state.position = J.arrange.position;
+      state.duration = J.arrange.duration();
+      if (J.arrange.finished()) {
+        J.arrange.stop();
+        state.playing = false;
+        stopTicking();
+        render();
+        api.step(1);
+        return;
+      }
+      paint();
+      return;
+    }
     const audio = activeAudio();
     if (!seeking) state.position = audio.currentTime || 0;
     if (audio.duration && Number.isFinite(audio.duration)) state.duration = audio.duration;
@@ -91,6 +143,16 @@ J.player = (function () {
   }
   const startTicking = () => { if (!ticking) tick(); };
   const stopTicking = () => { if (ticking) { cancelAnimationFrame(ticking); ticking = null; } };
+
+  /* Just the loading figure, without rebuilding the bar around it. */
+  function paintPreparing() {
+    const node = el();
+    if (!node) return;
+    const label = J.$(".preparing-fill", node);
+    if (label) label.style.width = `${Math.round((state.preparing || 0) * 100)}%`;
+    const pct = J.$(".preparing-pct", node);
+    if (pct) pct.textContent = `${Math.round((state.preparing || 0) * 100)}%`;
+  }
 
   function paint() {
     const node = el();
@@ -119,7 +181,7 @@ J.player = (function () {
     const slot = state.slots[state.active];
     const version = slot.version;
     const art = state.song.artwork_id ? `/api/artwork/${state.song.artwork_id}/image` : null;
-    const hasB = !!state.slots.B.version;
+    const hasB = !!state.slots.B.version || arranged();
 
     node.innerHTML = `
       <div class="now-playing">
@@ -145,6 +207,12 @@ J.player = (function () {
             <svg viewBox="0 0 24 24" width="18" height="18"><path d="M17 6v12M5 6l9 6-9 6z" fill="currentColor" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
           </button>
         </div>
+        ${state.preparing !== null && state.preparing !== undefined ? `
+          <div class="preparing" title="Reading the render so it can be played as arranged">
+            <span>Preparing the arrangement</span>
+            <span class="preparing-bar"><span class="preparing-fill"></span></span>
+            <span class="preparing-pct">0%</span>
+          </div>` : `
         <div class="scrubber">
           <span class="t now">0:00</span>
           <div class="bar" data-act="seek">
@@ -152,15 +220,16 @@ J.player = (function () {
             <span class="fill"></span><span class="knob"></span>
           </div>
           <span class="t right total">0:00</span>
-        </div>
+        </div>`}
       </div>
 
       <div class="player-right">
-        <div class="ab-chips" title="Compare two takes. Press X to swap.">
-          <button class="ab-chip ${state.active === "A" ? "on" : ""}" data-act="slot" data-slot="A">A</button>
-          <button class="ab-chip ${state.active === "B" ? "on" : ""}" data-act="slot" data-slot="B"
-                  ${hasB ? "" : "disabled title='Set a B on the song page'"}>B</button>
-        </div>
+        ${hasB ? `
+          <div class="ab-chips" title="Compare two takes. Press X to swap.">
+            <button class="ab-chip ${state.active === "A" ? "on" : ""}" data-act="slot" data-slot="A">A</button>
+            <button class="ab-chip ${state.active === "B" ? "on" : ""}" data-act="slot" data-slot="B">B</button>
+            ${arranged() ? '<span class="ab-note" title="The compositor is on, so A and B compare sounds rather than takes">sound</span>' : ""}
+          </div>` : ""}
         <div class="volume">
           <button class="icon-btn" data-act="mute" aria-label="Mute">
             <svg viewBox="0 0 24 24" width="17" height="17"><path d="M4 9v6h4l5 4V5L8 9z" fill="currentColor"/>${
@@ -184,7 +253,12 @@ J.player = (function () {
       if (changed) {
         state.slots.B = { version: null, preset: null };
         await loadVersion("B", null);
-        await api.loadPresets(song.id);
+        // Neither of these needs the other, so they go together rather than in a queue.
+        await Promise.all([
+          api.loadPresets(song.id),
+          (J.arrange && J.state.modules.includes("arrange"))
+            ? J.try(() => J.arrange.load(song.id)) : Promise.resolve(),
+        ]);
       }
       state.active = "A";
       await loadVersion("A", version);
@@ -233,7 +307,17 @@ J.player = (function () {
     },
 
     async switchTo(slot) {
-      if (!state.slots[slot].version || slot === state.active) return;
+      if (slot === state.active) return;
+      if (arranged()) {
+        // Only the sound changes. There is one arrangement, so there is nothing else
+        // for the other chip to be.
+        state.active = slot;
+        applyGains();
+        render();
+        J.emit("player:change");
+        return;
+      }
+      if (!state.slots[slot].version) return;
       syncOther();
       state.active = slot;
       applyGains();
@@ -245,7 +329,7 @@ J.player = (function () {
 
     swap() {
       const to = other();
-      if (state.slots[to].version) api.switchTo(to);
+      if (arranged() || state.slots[to].version) api.switchTo(to);
     },
 
     /* An edit to a preset reaches whichever slots are using it, and nothing else. */
@@ -278,8 +362,15 @@ J.player = (function () {
     },
 
     seek(fraction) {
-      const audio = activeAudio();
       if (!state.duration) return;
+      if (arranged()) {
+        const to = J.clamp(fraction, 0, 1) * state.duration;
+        J.arrange.seek(to);
+        state.position = to;
+        paint();
+        return;
+      }
+      const audio = activeAudio();
       const at = J.clamp(fraction, 0, 1) * state.duration;
       audio.currentTime = at;
       state.position = at;

@@ -10,6 +10,7 @@ whole stream, so a binary delta would save close to nothing. Deduplication saves
 that actually happens: the same file arriving more than once.
 """
 import os
+import time
 import hashlib
 import shutil
 
@@ -46,6 +47,7 @@ def put_bytes(data):
     with open(tmp, "wb") as f:
         f.write(data)
     os.replace(tmp, dest)
+    _forget_usage()
     return digest, True
 
 
@@ -77,6 +79,7 @@ def put_stream(stream, length):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         os.replace(tmp, dest)
         tmp = None
+        _forget_usage()
         return digest, size, True
     finally:
         if tmp and os.path.exists(tmp):
@@ -94,6 +97,7 @@ def put_path(path):
     tmp = dest + ".part"
     shutil.copyfile(path, tmp)
     os.replace(tmp, dest)
+    _forget_usage()
     return digest, size, True
 
 
@@ -108,12 +112,35 @@ def delete(digest):
     """Only ever called once nothing references the blob. Callers check, not this."""
     try:
         os.remove(path_for(digest))
+        _forget_usage()
         return True
     except OSError:
         return False
 
 
-def usage():
+#: How long a storage total is allowed to be out of date, in seconds.
+#:
+#: Walking every blob is fine for a handful of files and slow for a library of a few
+#: hundred, and it sat on /api/state, which is asked for on every page load. Nothing
+#: depends on this number being to the byte: it is shown on the settings page.
+USAGE_TTL = 30.0
+#: Keyed by which store it counted, because a test, or a second library on the same
+#: machine, must never be handed another one's total.
+_usage = {"at": 0.0, "value": None, "where": None}
+
+
+def _forget_usage():
+    """Called by everything that adds or removes a blob, so the total is never stale
+    because of something this process did. The clock is only a backstop for changes
+    made to the folder from outside."""
+    _usage["value"] = None
+
+
+def usage(fresh=False):
+    now = time.time()
+    if (not fresh and _usage["value"] and _usage["where"] == config.BLOBS
+            and now - _usage["at"] < USAGE_TTL):
+        return _usage["value"]
     total = count = 0
     for root, _, files in os.walk(config.BLOBS):
         for name in files:
@@ -124,4 +151,7 @@ def usage():
                 count += 1
             except OSError:
                 pass
-    return {"files": count, "bytes": total}
+    _usage["at"] = now
+    _usage["where"] = config.BLOBS
+    _usage["value"] = {"files": count, "bytes": total}
+    return _usage["value"]
