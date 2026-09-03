@@ -168,6 +168,56 @@ async function boot() {
   }
   setRail(narrow() ? true : localStorage.getItem(RAIL_KEY) === "1");
 
+  /* Swiping sideways opens or closes the rail.
+   *
+   * Anywhere that does not already use a sideways drag, which on a phone is nearly
+   * everywhere: a list is mostly rows, and a row has no horizontal gesture of its own,
+   * so requiring genuinely blank space would have meant almost nowhere to do it. Only
+   * the handful of things that are dragged across on purpose are left out, and each is
+   * named below with the reason.
+   *
+   * Vertical wins ties, because pages scroll up and down and a swipe even slightly more
+   * up than across was meant to scroll. Fifty five pixels is far enough that a press
+   * that wandered is not mistaken for one of these.
+   */
+  const KEEPS_ITS_GESTURES = [
+    // Things that are dragged sideways on purpose.
+    ".deck-window",      // lyric cards are swiped between
+    ".comp-scroll",      // the arrangement scrolls across
+    "canvas",            // the equaliser and the limiter are dragged in both axes
+    ".range", ".bar",    // sliders and the scrub bar
+    ".q-knob",
+    // Things that scroll inside themselves.
+    ".sheet", ".slot-menu", ".pick-list",
+    // And the rail, which is the thing being opened.
+    ".rail",
+  ].join(", ");
+
+  //: How far across before it counts, in pixels.
+  const SWIPE = 55;
+
+  let swipe = null;
+  document.addEventListener("pointerdown", (e) => {
+    swipe = null;
+    if (e.pointerType === "mouse" || e.button) return;      // a mouse has the button
+    if (e.target.closest(KEEPS_ITS_GESTURES)) return;       // something else owns this
+    swipe = { x: e.clientX, y: e.clientY, id: e.pointerId, done: false };
+  }, { passive: true });
+
+  document.addEventListener("pointermove", (e) => {
+    if (!swipe || swipe.done || e.pointerId !== swipe.id) return;
+    const dx = e.clientX - swipe.x;
+    const dy = e.clientY - swipe.y;
+    if (Math.abs(dy) >= Math.abs(dx)) { swipe = null; return; }   // they are scrolling
+    if (Math.abs(dx) < SWIPE) return;
+    swipe.done = true;
+    setRail(dx < 0);                                        // right opens, left shuts
+  }, { passive: true });
+
+  const endSwipe = () => { swipe = null; };
+  document.addEventListener("pointerup", endSwipe, { passive: true });
+  document.addEventListener("pointercancel", endSwipe, { passive: true });
+
   J.$("#railOpen").addEventListener("click", () => setRail(false));
   J.$("#railClose").addEventListener("click", () => setRail(true));
   J.$("#railScrim").addEventListener("click", () => setRail(true));

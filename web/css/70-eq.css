@@ -41,17 +41,12 @@
   border: 1px solid var(--line);
   overflow: hidden;
   user-select: none;
-  /* The page may still scroll vertically over this. The gesture helper decides
-     whether a finger meant to edit or to get past, and switches this off for the
-     duration once it decides the former. Blocking every scroll meant a phone
-     could not get past the equaliser without changing the sound. */
-  touch-action: pan-y;
+  touch-action: none;
 }
 .eq-canvas {
   display: block; width: 100%; height: 300px; cursor: crosshair;
-  /* touch-action does not inherit, so the canvas needs this itself: the wrapper
-     having it did nothing for the element the finger actually lands on. */
-  touch-action: pan-y;
+  /* touch-action does not inherit, so the canvas needs it itself. */
+  touch-action: none;
 }
 .eq-canvas.dragging { cursor: grabbing; }
 
@@ -162,15 +157,11 @@
   border: 1px solid var(--line);
   overflow: hidden;
   user-select: none;
-  /* The page may still scroll vertically over this. The gesture helper decides
-     whether a finger meant to edit or to get past, and switches this off for the
-     duration once it decides the former. Blocking every scroll meant a phone
-     could not get past the equaliser without changing the sound. */
-  touch-action: pan-y;
+  touch-action: none;
 }
 .limiter-canvas {
   display: block; width: 100%; height: 180px;
-  touch-action: pan-y;      /* the same: the finger lands here, not on the wrapper */
+  touch-action: none;       /* the same: the finger lands here, not on the wrapper */
 }
 .limiter-hint {
   position: absolute; right: var(--s4); bottom: var(--s3);

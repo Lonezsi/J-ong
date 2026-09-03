@@ -192,38 +192,35 @@ J.limiter = (function () {
       return best;
     }
 
-    /* Only a finger that landed on one of the two lines is taken as a drag. Anywhere
-     * else on the graph belongs to the page, so scrolling past the limiter works. */
+    /* Only a press that landed on one of the two lines is a drag. */
     canvas.addEventListener("pointerdown", (e) => {
       const which = nearest(at(e));
       if (!which) return;
-      J.gesture.begin(e, {
-        target: canvas,
-        aimed: true,            // they landed on a line, which is a small target
-        onStart() {
-          drag = which;
-          canvas.style.touchAction = "none";
-        },
-        onMove(event) {
-          if (!drag) return;
-          const value = Math.round(xToDb(at(event).x) * 10) / 10;
-          data.limiter = data.limiter || {};
-          if (drag === "threshold") data.limiter.threshold = J.clamp(value, -60, 0);
-          else data.limiter.ceiling = J.clamp(value, -30, 0);
-          onChange(data, drag);
-        },
-        onEnd() {
-          drag = null;
-          canvas.style.touchAction = "";
-        },
-      });
+      drag = which;
+      try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* drag still works */ }
     });
 
     canvas.addEventListener("pointermove", (e) => {
-      if (drag || e.pointerType === "touch") return;
+      if (drag) {
+        const value = Math.round(xToDb(at(e).x) * 10) / 10;
+        data.limiter = data.limiter || {};
+        if (drag === "threshold") data.limiter.threshold = J.clamp(value, -60, 0);
+        else data.limiter.ceiling = J.clamp(value, -30, 0);
+        onChange(data, drag);
+        return;
+      }
+      if (e.pointerType === "touch") return;
       const near = nearest(at(e));
       if (near !== hover) { hover = near; canvas.style.cursor = near ? "ew-resize" : "default"; }
     });
+
+    const release = (e) => {
+      if (!drag) return;
+      drag = null;
+      try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* already */ }
+    };
+    canvas.addEventListener("pointerup", release);
+    canvas.addEventListener("pointercancel", release);
 
     function start() { if (!raf) { resize(); frame(); } }
     function stop() { if (raf) { cancelAnimationFrame(raf); raf = null; } }
