@@ -76,10 +76,10 @@ J.views.song = {
               </button>` : ""}
 
             <div class="hero-line">
-              <button class="play-btn" id="heroPlay" aria-label="Play"
-                      ${versions.length ? "" : "disabled"}>
-                <svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5l12 7-12 7z" fill="currentColor"/></svg>
-              </button>
+              ${versions.length ? `
+                <button class="play-btn" id="heroPlay" aria-label="Play">
+                  <svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5l12 7-12 7z" fill="currentColor"/></svg>
+                </button>` : ""}
               <span class="hero-facts">
                 ${versions.length ? `
                   <b>v${current.n}</b>
