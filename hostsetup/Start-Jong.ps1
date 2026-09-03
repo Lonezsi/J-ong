@@ -1,10 +1,17 @@
-# Start J-ong on a machine nobody is sitting at.
+# Start J-ong on a machine nobody is sitting at, and keep it started.
 #
-# It binds to localhost only. Public access comes from Tailscale Funnel, which terminates
-# HTTPS and forwards to this port, so J-ong is never exposed on the local network and
-# never has to hold a certificate.
+# Run this on a repeating schedule. It is both the launcher and the watchdog: on a run
+# where the library is already answering it does nothing and exits, and on a run where it
+# is not, it starts one.
 #
-# Registered as a scheduled task by Install-JongHost.ps1 and started at boot.
+# Answering is the test, not "a process exists" and not "a port is held". A wedged server
+# holds its port perfectly well while serving nobody, and that is indistinguishable from
+# a crash to the person trying to open the page. So the check is an actual request.
+#
+# It binds to every interface. Two things need to reach it: Tailscale Funnel, which
+# forwards from localhost, and the tailnet on 100.x. What makes that safe is the door:
+# the auth module is loaded, so an unauthenticated caller from anywhere gets the login
+# page and nothing else.
 
 $ErrorActionPreference = 'Stop'
 
@@ -12,6 +19,7 @@ $Root   = Split-Path -Parent $PSScriptRoot
 $LogDir = Join-Path $Root 'data'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $Log    = Join-Path $LogDir 'host-jong.log'
+$Port   = 7900
 
 function Say($text) {
     $line = "{0}  {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $text
@@ -36,38 +44,56 @@ function Find-Python {
     return $null
 }
 
+# Is the library actually serving. Two tries, because a request landing in the half
+# second while the process is still binding is not a fault worth acting on.
+function Test-Serving {
+    foreach ($attempt in 1..2) {
+        try {
+            $r = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/api/health" `
+                                   -UseBasicParsing -TimeoutSec 6
+            if ($r.StatusCode -eq 200) { return $true }
+        } catch { }
+        if ($attempt -lt 2) { Start-Sleep -Seconds 3 }
+    }
+    return $false
+}
+
+function Get-JongProcesses {
+    Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine -like '*server.py*' -and
+                       $_.CommandLine -like '*J-ong*' }
+}
+
+if (Test-Serving) { exit 0 }        # the common case: nothing to do, say nothing
+
 $py = Find-Python
 if (-not $py) {
     Say 'no Python found; cannot start'
     exit 1
 }
 
-# One copy only. If something is already serving the port, this run has nothing to do.
-$busy = Get-NetTCPConnection -State Listen -LocalPort 7900 -ErrorAction SilentlyContinue
-if ($busy) {
-    Say 'port 7900 is already being served; leaving it alone'
-    exit 0
+# Not answering. If something is nevertheless sitting on the port, it is wedged or it is
+# a half dead copy, and leaving it there means the watchdog can never get the library
+# back: the new process would fail to bind and exit, forever.
+$stale = Get-JongProcesses
+if ($stale) {
+    Say ("not answering but {0} process(es) present; stopping them" -f @($stale).Count)
+    foreach ($p in $stale) {
+        try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop } catch { }
+    }
+    Start-Sleep -Seconds 3
 }
 
-# Listen on every interface rather than localhost alone.
-#
-# Two things need to reach it: Tailscale Funnel, which forwards from localhost, and the
-# tailnet itself on 100.x, which is how the library is reachable before Funnel has been
-# switched on for the tailnet. Binding to one of those would rule out the other.
-#
-# What makes this safe is the door: the auth module is loaded, so an unauthenticated
-# caller from anywhere gets the login page and nothing else, and until a password exists
-# even that needs the one time setup code printed below.
 $env:JONG_HOST = '0.0.0.0'
-$env:JONG_PORT = '7900'
+$env:JONG_PORT = "$Port"
 
 Say ("starting with {0}" -f $py)
 
 # Straight to a file rather than through Tee-Object.
 #
-# Piping put a PowerShell process between the server and its log. Anything that upset
-# the pipe took the server with it, and there is nobody sitting at this machine to
-# notice, so the library simply stopped answering. A redirect has nothing in the middle.
+# Piping put a PowerShell process between the server and its log. Anything that upset the
+# pipe took the server with it, and there is nobody sitting at this machine to notice.
+# A redirect has nothing in the middle.
 $out = Join-Path $LogDir 'host-jong-out.log'
 & $py -u (Join-Path $Root 'server.py') *>> $out
 Say ("server exited with {0}" -f $LASTEXITCODE)

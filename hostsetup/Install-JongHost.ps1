@@ -30,7 +30,19 @@ if (-not (Test-Path $script)) { throw "Start-Jong.ps1 is not next to this file."
 $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
     -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $script) `
     -WorkingDirectory $Root
-$trigger = New-ScheduledTaskTrigger -AtStartup
+# Two triggers, and the second one is the point.
+#
+# At boot alone, a library that stops at three in the afternoon stays stopped until the
+# machine is next restarted, which on a host nobody sits at can be weeks. That is what
+# "it keeps crashing" looks like from the outside: not a process dying often, but one
+# dying once and nothing ever bringing it back.
+#
+# So there is also a check every few minutes, for ever. Start-Jong.ps1 is written to be
+# run this way: on a run where the library answers it exits immediately and says nothing.
+$atBoot = New-ScheduledTaskTrigger -AtStartup
+$watchdog = New-ScheduledTaskTrigger -Once -At (Get-Date).Date `
+    -RepetitionInterval (New-TimeSpan -Minutes 3)
+$trigger = @($atBoot, $watchdog)
 # SYSTEM, because this machine runs with nobody logged in.
 $principal = New-ScheduledTaskPrincipal -UserId 'S-1-5-18' -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
