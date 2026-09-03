@@ -21,7 +21,14 @@ def main(argv=None):
     parser.add_argument("--open", action="store_true", help="open a browser once it is up")
     args = parser.parse_args(argv)
 
-    server = http.serve(args.host, args.port)
+    try:
+        server = http.serve(args.host, args.port)
+    except OSError as e:
+        # Almost always a copy that is already running. Saying so beats a stack trace,
+        # and beats starting a second server that fights the first for requests.
+        print("J-ong could not take port %d: %s" % (args.port, e))
+        print("Something is already serving it. Stop that first, or use --port.")
+        return 1
     where = "http://%s:%d" % (args.host, args.port)
 
     print("J-ong %s" % __import__("jong").__version__)

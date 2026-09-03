@@ -128,3 +128,29 @@ def test_reading_the_body_twice_over_does_not_run_into_the_next_request(server):
 
     _, listing = server.get("/api/songs")
     assert len(listing["songs"]) == 4
+
+
+def test_a_second_server_cannot_take_a_port_that_is_already_served():
+    """Two copies serving one port is worse than one copy failing to start.
+
+    On Windows SO_REUSEADDR lets a later process bind a port an earlier one is already
+    listening on, and the two then divide the incoming connections between them. With a
+    scheduled task retrying every minute that produced several servers at once, requests
+    landing on whichever happened to catch them, and a library that appeared to crash
+    constantly while every individual process was perfectly healthy.
+    """
+    import socket
+    from jong.http import Server, Handler
+
+    first = Server(("127.0.0.1", 0), Handler)
+    port = first.server_address[1]
+    try:
+        try:
+            second = Server(("127.0.0.1", port), Handler)
+        except OSError:
+            return                      # refused, which is the whole point
+        second.server_close()
+        raise AssertionError(
+            "a second server bound port %d while the first was serving it" % port)
+    finally:
+        first.server_close()

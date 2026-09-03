@@ -9,6 +9,7 @@ gives the server.
 import io
 import os
 import sys
+import socket
 import json
 import time
 import hashlib
@@ -427,8 +428,24 @@ class Server(ThreadingHTTPServer):
     """
 
     daemon_threads = True
-    #: Otherwise a restart during development hits "address already in use" for a minute.
-    allow_reuse_address = True
+
+    #: On Windows this must be off, and the stdlib turns it on.
+    #:
+    #: SO_REUSEADDR on Windows does not mean what it means elsewhere: it lets a second
+    #: process bind a port another process is already serving, and the two then split
+    #: the incoming connections between them at random. With a scheduled task that
+    #: retries every minute, that is how you end up with several servers, requests
+    #: landing on whichever one happened to get them, and a library that looks like it
+    #: keeps crashing. A second copy should fail to start and say why.
+    allow_reuse_address = os.name != "nt"
+
+    def server_bind(self):
+        if os.name == "nt":
+            try:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            except (AttributeError, OSError):
+                pass      # older Windows without it; the flag above still does the work
+        super().server_bind()
 
     def handle_error(self, request, client_address):
         kind = sys.exc_info()[0]
