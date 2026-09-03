@@ -7,6 +7,8 @@
 
 J.router = (function () {
   let currentPath = "";
+  let currentView = "";
+  let currentParams = {};
   let token = 0;
 
   function parse() {
@@ -56,7 +58,20 @@ J.router = (function () {
      * look like a page load, and the thing you just did flashes out of existence before
      * it comes back. So a refresh keeps what is on screen until the new content is
      * ready, and only a genuine navigation gets the skeleton. */
-    const inPlace = !!(options && options.inPlace) && location.hash === currentPath;
+    /* Three kinds of arriving, and they should not look the same.
+     *
+     *   a refresh      the same screen redrawn after an edit: keep what is there
+     *   a refinement   the same screen with a different query, which is what typing in
+     *                  the search box is: also keep what is there, or every keystroke
+     *                  blinks the list away and back
+     *   a navigation   somewhere else, including another song: show the skeleton,
+     *                  because holding the previous song on screen while a different
+     *                  one loads is worse than showing nothing
+     */
+    const sameScreen = view === currentView
+      && String(params.id || "") === String(currentParams.id || "");
+    const inPlace = sameScreen
+      && (!!(options && options.inPlace) || location.hash !== currentPath);
     showProgress();
 
     /* A fresh element every time, rather than emptying the old one.
@@ -117,6 +132,8 @@ J.router = (function () {
     if (mine !== token) return;
     settle();
     currentPath = location.hash;
+    currentView = view;
+    currentParams = params;
     J.markNav(view);
     // Only a real navigation goes back to the top. Writing the content resets the
     // scroll, so the position has to be the one captured before the swap, not the one
