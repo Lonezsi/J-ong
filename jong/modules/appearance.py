@@ -35,12 +35,28 @@ def _find():
     return None
 
 
+def _given_name(path, fallback):
+    """The name the font arrived with, if it was written down beside it.
+
+    The file itself is stored as display.ttf, because the name a font arrives under is
+    not something to build a file path out of. But that meant the settings page told you
+    your font was called display.ttf, when you had just uploaded Orena.ttf and that is
+    what you were looking for.
+    """
+    try:
+        with open(path + ".name", encoding="utf-8") as f:
+            given = f.read().strip()
+        return given or fallback
+    except OSError:
+        return fallback
+
+
 def state():
     path = _find()
     if not path:
         return {"custom_font": False}
     return {"custom_font": True,
-            "font_name": os.path.basename(path),
+            "font_name": _given_name(path, os.path.basename(path)),
             "font_format": FONT_EXT[os.path.splitext(path)[1].lower()],
             "uploaded_at": os.path.getmtime(path)}
 
@@ -79,9 +95,13 @@ def upload_font(req):
             os.remove(os.path.join(_dir(), old))
         except OSError:
             pass
-    safe = "display" + ext
-    with open(os.path.join(_dir(), safe), "wb") as f:
+    safe = os.path.join(_dir(), "display" + ext)
+    with open(safe, "wb") as f:
         f.write(body)
+    # Beside it rather than in it, so the stored file keeps a name that is safe to build
+    # a path from while the page can still show you the one you chose.
+    with open(safe + ".name", "w", encoding="utf-8") as f:
+        f.write(os.path.basename(filename)[:120])
     return {"ok": True, "font": state()}
 
 
@@ -89,6 +109,10 @@ def clear_font(req):
     path = _find()
     if path:
         os.remove(path)
+        try:
+            os.remove(path + ".name")
+        except OSError:
+            pass
     return {"ok": True, "font": state()}
 
 

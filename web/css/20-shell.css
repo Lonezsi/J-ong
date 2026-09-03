@@ -57,7 +57,22 @@
 }
 .nav a svg { flex: none; opacity: 0.9; }
 .nav a:hover { background: var(--hover); color: var(--text); }
-.nav a.on { background: var(--accent-soft); color: var(--accent-hi); }
+.nav a.on {
+  background: linear-gradient(90deg, var(--accent-soft) 0%, rgba(84, 179, 122, 0.04) 100%);
+  color: var(--accent-hi);
+}
+/* A lit edge on the side the eye starts from, so which screen you are on is readable
+   from the shape of the rail rather than from reading the labels. */
+.nav a.on::before {
+  content: "";
+  position: absolute; left: 0; top: 50%;
+  width: 3px; height: 18px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  transform: translateY(-50%);
+  box-shadow: 0 0 10px var(--accent);
+}
+.nav a { position: relative; }
 
 .rail-section {
   flex: 1;
