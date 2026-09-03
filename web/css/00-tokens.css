@@ -1,38 +1,77 @@
 /* Tokens.
 
    Somewhere between a chat app and a music app: the calm surfaces and generous spacing
-   of one, the dark ground and green of the other. The neutrals are not grey, they lean
-   very slightly green so the accent reads as belonging to the room rather than dropped
-   into it.
+   of one, the dark ground and green of the other.
+
+   The ground is nearly black now, and deliberately not pure black. Pure black against a
+   bright accent is harsh at night and shows every bit of banding on an OLED panel; a few
+   points of green in the darkest neutrals give the accent somewhere to belong and keep
+   the large flat areas from looking like a hole in the screen.
+
+   Light in this room comes from above. Every raised surface is a gradient a shade lighter
+   at its top edge than its bottom, which is what makes a card read as a card without a
+   hard border around it, and it is why there are so few hard borders here.
 
    Plant green rather than the usual signal green: enough life to mark what is playing,
    not so much that it glows. */
 
 :root {
-  --bg:          #0F1311;
-  --bg-deep:     #0A0D0B;
-  --surface:     #171C19;
-  --surface-2:   #1E2521;
-  --elevated:    #232B26;
-  --hover:       rgba(255, 255, 255, 0.045);
-  --pressed:     rgba(255, 255, 255, 0.08);
+  /* ── the ground ─────────────────────────────────────────────────────────── */
+  --bg:          #070907;
+  --bg-deep:     #030403;
+  --bg-high:     #0B0F0C;      /* the top of the page, where the light falls */
 
-  --line:        rgba(255, 255, 255, 0.07);
-  --line-2:      rgba(255, 255, 255, 0.13);
+  --surface:     #0E120F;
+  --surface-2:   #141A16;
+  --elevated:    #1B231E;
+  --hover:       rgba(255, 255, 255, 0.05);
+  --pressed:     rgba(255, 255, 255, 0.09);
 
-  --text:        #E8EDE9;
-  --text-2:      #9BA8A0;
-  --text-3:      #6E7B74;
-  --text-on-accent: #08130C;
+  --line:        rgba(255, 255, 255, 0.06);
+  --line-2:      rgba(255, 255, 255, 0.12);
+
+  --text:        #E9EFEA;
+  --text-2:      #98A69E;
+  --text-3:      #66736C;
+  --text-on-accent: #04120A;
 
   --accent:      #54B37A;
-  --accent-hi:   #6ECB92;
-  --accent-lo:   #3E8B5D;
-  --accent-soft: rgba(84, 179, 122, 0.14);
-  --accent-line: rgba(84, 179, 122, 0.4);
+  --accent-hi:   #74D398;
+  --accent-lo:   #38835A;
+  --accent-soft: rgba(84, 179, 122, 0.13);
+  --accent-line: rgba(84, 179, 122, 0.38);
 
   --warn:        #D9A441;
   --bad:         #D4685E;
+  --bad-hi:      #F0A79E;
+  /* Type that sits on a saturated block rather than on the room's ground. */
+  --text-on-color: #FFFFFF;
+
+  /* ── gradients ──────────────────────────────────────────────────────────── */
+
+  /* The page itself. A single soft pool of light behind the top of the content, so
+     scrolling feels like moving through a room rather than down a flat sheet. */
+  --grad-app:
+    radial-gradient(1100px 620px at 22% -12%, rgba(84, 179, 122, 0.10), transparent 62%),
+    radial-gradient(900px 520px at 92% 4%, rgba(84, 179, 122, 0.05), transparent 58%),
+    linear-gradient(180deg, var(--bg-high) 0%, var(--bg) 42%, var(--bg-deep) 100%);
+
+  /* Raised things. Barely there on purpose: the difference between the two stops is
+     about two percent of lightness, which the eye reads as a lit edge and not as a
+     gradient at all. */
+  --grad-surface:  linear-gradient(180deg, #12181400 0%, #00000038 100%),
+                   linear-gradient(180deg, #171E1A 0%, #0F1411 100%);
+  --grad-raised:   linear-gradient(180deg, #1E2721 0%, #151B17 100%);
+  --grad-raised-hi: linear-gradient(180deg, #27332B 0%, #1C251F 100%);
+  --grad-sunken:   linear-gradient(180deg, #05070600 0%, #00000040 100%),
+                   linear-gradient(180deg, #090D0A 0%, #060907 100%);
+
+  /* The accent, with the light coming from the same place as everywhere else. */
+  --grad-accent:   linear-gradient(180deg, #64C68A 0%, #47A26B 100%);
+  --grad-accent-hi: linear-gradient(180deg, #7ADCA0 0%, #54B37A 100%);
+
+  /* A hairline that fades out towards the bottom, for the top edge of a raised thing. */
+  --edge-top: inset 0 1px 0 rgba(255, 255, 255, 0.055);
 
   --font:  "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   /* "Jong Display" is whatever font has been uploaded in Settings, registered at runtime.
@@ -53,16 +92,21 @@
   --rail-w: 244px;
   --player-h: 84px;
 
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.36);
-  --shadow-3: 0 20px 60px rgba(0, 0, 0, 0.5);
+  /* Deeper than before, because the ground is darker and a shadow that worked against
+     #0F1311 disappears entirely against #070907. */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.55);
+  --shadow-3: 0 24px 70px rgba(0, 0, 0, 0.7);
+  --glow:     0 0 0 1px var(--accent-line), 0 8px 30px rgba(84, 179, 122, 0.18);
 
   --ease: cubic-bezier(0.22, 0.7, 0.3, 1);
+  /* A little slower than a click, so movement is felt rather than noticed. */
   --fast: 130ms var(--ease);
   --med:  220ms var(--ease);
+  --slow: 420ms var(--ease);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --fast: 1ms linear; --med: 1ms linear; }
+  :root { --fast: 1ms linear; --med: 1ms linear; --slow: 1ms linear; }
   * { animation-duration: 1ms !important; scroll-behavior: auto !important; }
 }

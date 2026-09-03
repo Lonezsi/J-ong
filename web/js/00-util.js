@@ -159,3 +159,33 @@ J.debounce = (fn, wait) => {
   wrapped.now = (...args) => { clearTimeout(timer); fn(...args); };
   return wrapped;
 };
+
+
+/* A stand in for a screen that is still loading.
+ *
+ * Shown the instant a navigation starts, so the app never blanks. It is shaped roughly
+ * like what is coming, because a placeholder in the wrong shape is worse than none: the
+ * page jumps when the real thing lands and the eye has to start again.
+ *
+ * Deliberately dim and slow. A shimmering block that demands attention while you wait
+ * for it is the wrong way round.
+ */
+J.skeleton = (kind) => {
+  const line = (w, h) => `<span class="sk-line" style="width:${w};height:${h || "13px"}"></span>`;
+  if (kind === "song") {
+    return `<div class="sk">
+      <div class="sk-hero">
+        <span class="sk-cover"></span>
+        <span class="sk-stack">${line("46%", "38px")}${line("30%")}${line("22%")}</span>
+      </div>
+      <div class="sk-block">${line("18%", "11px")}${line("100%", "120px")}</div>
+      <div class="sk-block">${line("18%", "11px")}${line("100%", "160px")}</div>
+    </div>`;
+  }
+  return `<div class="sk">
+    <div class="sk-block">${line("22%", "22px")}
+      ${[72, 88, 64, 80, 58].map((w) => `<span class="sk-row">
+        <span class="sk-thumb"></span>${line(w + "%")}</span>`).join("")}
+    </div>
+  </div>`;
+};

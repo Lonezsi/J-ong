@@ -2,10 +2,14 @@
 
 .sheet-backdrop {
   position: fixed; inset: 0; z-index: 60;
-  background: rgba(0, 0, 0, 0.6);
+  /* Darker and blurred, because the ground behind is now nearly black: a flat 60% veil
+     over it barely separated the dialog from the page at all. */
+  background: rgba(0, 0, 0, 0.66);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+  backdrop-filter: blur(6px) saturate(120%);
   display: grid; place-items: center;
   padding: var(--s4);
-  animation: fade-in 140ms var(--ease);
+  animation: fade-in 160ms var(--ease);
 }
 @keyframes fade-in { from { opacity: 0; } }
 
@@ -13,15 +17,16 @@
   width: min(520px, 100%);
   max-height: 84dvh;
   overflow-y: auto;
-  background: var(--surface);
+  background: var(--grad-raised);
   border: 1px solid var(--line-2);
   border-radius: var(--r-xl);
-  box-shadow: var(--shadow-3);
+  box-shadow: var(--shadow-3), var(--edge-top);
   padding: var(--s6);
-  animation: sheet-in 200ms var(--ease);
+  animation: sheet-in 240ms var(--ease);
 }
 .sheet.wide { width: min(760px, 100%); }
-@keyframes sheet-in { from { opacity: 0; transform: translateY(14px) scale(0.98); } }
+/* It comes up from the page rather than appearing on top of it. */
+@keyframes sheet-in { from { opacity: 0; transform: translateY(18px) scale(0.975); } }
 
 .sheet h2 { margin-bottom: var(--s2); }
 .sheet .sub { color: var(--text-2); margin-bottom: var(--s5); }
@@ -33,7 +38,7 @@
   display: flex; align-items: center; gap: var(--s3);
   padding: var(--s3);
   border-radius: var(--r-md);
-  background: var(--surface-2);
+  background: var(--grad-surface);
   margin-bottom: var(--s2);
 }
 .candidate .grow { min-width: 0; }

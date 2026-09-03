@@ -80,12 +80,19 @@ def test_the_endpoints_each_feature_needs_are_still_called():
 def test_the_router_replaces_the_view_rather_than_emptying_it():
     """Views attach delegated click handlers to the view node. Emptying it left every
     previous view's handler attached: after six navigations one click on Play started
-    playback six times over and the concurrent starts fought each other."""
+    playback six times over and the concurrent starts fought each other.
+
+    Matched on what the router does rather than on the signature it happens to have, so
+    adding an argument to go() does not read as the bug coming back.
+    """
     with open(os.path.join(JS_DIR, "80-router.js"), encoding="utf-8") as f:
         router = f.read()
     assert "replaceWith" in router, "the router reuses the view node, so listeners pile up"
-    body = router.split("async function go()", 1)[1]
-    assert 'createElement("div")' in body
+    body = re.split(r"async function go\(", router, maxsplit=1)[1]
+    assert 'createElement("div")' in body, "the router no longer builds a fresh view node"
+    # Even the in place refresh has to make a new node; carrying the old one over is
+    # exactly how the handlers used to pile up.
+    assert body.count('createElement("div")') == 1
 
 
 def test_listeners_on_the_bus_let_go_when_their_panel_is_gone():

@@ -188,7 +188,9 @@ J.views.renders = {
     function card(render) {
       const used = !render.waiting;
       return `
-        <div class="render-row ${used ? "used" : ""}" data-id="${render.id}">
+        <div class="render-row ${used ? "used" : ""}" data-id="${render.id}"
+             ${used ? "" : 'data-act="attach" role="button" tabindex="0"'}
+             ${used ? "" : `aria-label="Add ${J.esc(render.name)} to a song"`}>
           <button class="icon-btn play" data-act="play" aria-label="Play ${J.esc(render.name)}">
             ${playing === render.id
               ? `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 6h3v12H8zM13 6h3v12h-3z" fill="currentColor"/></svg>`
@@ -206,7 +208,7 @@ J.views.renders = {
           </span>
           ${used
             ? `<button class="btn sm ghost" data-act="unattach">Put back</button>`
-            : `<button class="btn sm primary" data-act="attach">Add to a song</button>`}
+            : `<span class="row-go">Add to a song</span>`}
           <button class="icon-btn" data-act="dismiss" aria-label="Throw this render away">
             <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
           </button>
@@ -254,6 +256,14 @@ J.views.renders = {
             </div>`}
         </div>`;
     }
+
+    root.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const row = e.target.closest('.render-row[role="button"]');
+      if (!row) return;
+      e.preventDefault();
+      row.click();
+    });
 
     root.addEventListener("click", async (e) => {
       const act = e.target.closest("[data-act]");

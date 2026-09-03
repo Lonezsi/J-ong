@@ -19,7 +19,9 @@ html, body {
 }
 
 body {
-  background: var(--bg);
+  /* Fixed, so the pool of light stays where it is while the content moves through it.
+     A background that scrolls away turns into a visible seam halfway down a long page. */
+  background: var(--grad-app) fixed var(--bg-deep);
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
@@ -95,3 +97,85 @@ button, input, textarea, select { font: inherit; color: inherit; }
 }
 *::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.24); background-clip: content-box; }
 *::-webkit-scrollbar-track { background: transparent; }
+
+
+/* ── moving between screens ───────────────────────────────────────────────── */
+
+/* The new screen arrives rather than appearing. A few pixels of travel and a fade is
+   enough to say "this replaced that" without anybody waiting for an animation. */
+.view.entering {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+}
+.view {
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--med), transform var(--med);
+}
+
+/* The line at the top, for a navigation slow enough to notice. It fills most of the way
+   and waits, because the honest thing is that we do not know how long is left. */
+.nav-bar {
+  position: fixed; top: 0; left: 0; right: 0; height: 2px;
+  z-index: 100;
+  pointer-events: none;
+}
+.nav-bar span {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--accent-lo), var(--accent-hi));
+  box-shadow: 0 0 10px rgba(84, 179, 122, 0.6);
+}
+.nav-bar.running span { width: 82%; transition: width 2.4s cubic-bezier(0.1, 0.8, 0.2, 1); }
+.nav-bar.done span { width: 100%; opacity: 0; transition: width 140ms linear, opacity 220ms 120ms linear; }
+
+/* ── the shape of a screen that has not arrived yet ───────────────────────── */
+
+.sk { padding: var(--s6) var(--s7); animation: sk-in var(--med) both; }
+@keyframes sk-in { from { opacity: 0; } to { opacity: 1; } }
+
+.sk-hero { display: flex; gap: var(--s5); align-items: flex-end; margin-bottom: var(--s7); }
+.sk-stack { display: flex; flex-direction: column; gap: var(--s3); flex: 1; min-width: 0; }
+.sk-block { display: flex; flex-direction: column; gap: var(--s3); margin-bottom: var(--s6); }
+.sk-row { display: flex; align-items: center; gap: var(--s3); }
+
+.sk-line, .sk-cover, .sk-thumb {
+  display: block;
+  border-radius: var(--r-sm);
+  /* A slow sweep rather than a pulse. It should read as "still coming" from the corner
+     of your eye and never ask to be looked at directly. */
+  background:
+    linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, 0.045) 40%, transparent 62%),
+    var(--surface-2);
+  background-size: 260% 100%, auto;
+  animation: sk-sweep 1.9s var(--ease) infinite;
+}
+.sk-cover { width: 148px; height: 148px; border-radius: var(--r-lg); flex: none; }
+.sk-thumb { width: 40px; height: 40px; border-radius: var(--r-md); flex: none; }
+
+@keyframes sk-sweep {
+  from { background-position: 130% 0, 0 0; }
+  to   { background-position: -30% 0, 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-line, .sk-cover, .sk-thumb { animation: none; }
+}
+
+@media (max-width: 900px) {
+  .sk { padding: var(--s4); }
+  .sk-cover { width: 96px; height: 96px; }
+  .sk-hero { gap: var(--s4); }
+}
+
+
+/* ── keyboard ─────────────────────────────────────────────────────────────── */
+
+/* Only for people actually using a keyboard: :focus-visible leaves mouse clicks alone.
+   The browser's own ring is a thin dark outline, which against a near black ground is
+   the same as having no ring at all. */
+:focus-visible {
+  outline: 2px solid var(--accent-hi);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+.btn:focus-visible, .icon-btn:focus-visible, .pill:focus-visible { outline-offset: 3px; }

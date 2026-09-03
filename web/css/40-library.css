@@ -3,7 +3,7 @@
 .cover {
   position: relative;
   border-radius: var(--r-md);
-  background: var(--surface-2);
+  background: var(--grad-surface);
   background-size: cover;
   background-position: center;
   overflow: hidden;
@@ -19,12 +19,14 @@
    uploaded still looks like a shelf rather than a row of empty boxes. */
 .cover[data-hue] {
   background-image: linear-gradient(150deg,
-    hsl(var(--hue) 26% 32%), hsl(calc(var(--hue) + 34) 22% 17%));
+    hsl(var(--hue) 30% 26%), hsl(calc(var(--hue) + 34) 24% 11%));
 }
+/* A lit top edge, the same as every other raised thing on the page. */
+.cover { box-shadow: var(--edge-top); }
 .cover .letter {
   font-family: var(--display);
   font-weight: 800;
-  color: rgba(255, 255, 255, 0.44);
+  color: rgba(255, 255, 255, 0.38);
   font-size: 44cqmin;
   line-height: 1;
   letter-spacing: -0.03em;
@@ -45,7 +47,7 @@
   cursor: pointer;
   position: relative;
 }
-.album-card:hover { background: var(--surface-2); }
+.album-card:hover { background: var(--grad-raised); border-color: var(--line-2); }
 .album-card .cover { width: 100%; aspect-ratio: 1; border-radius: var(--r-md); margin-bottom: var(--s3); }
 .album-card .t { font-weight: 700; font-size: 14px; }
 .album-card .s { font-size: 12.5px; color: var(--text-3); }
@@ -68,8 +70,13 @@
   cursor: pointer;
   transition: background var(--fast);
 }
-.track:hover { background: var(--hover); }
+/* The row lights from the left, where the eye starts, rather than filling flat. */
+.track:hover {
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.022) 46%, transparent 100%);
+}
 .track:active { background: var(--pressed); }
+.track:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: -2px; }
 .track .lead { display: grid; place-items: center; width: 40px; }
 .track .cover { width: 40px; height: 40px; border-radius: var(--r-sm); }
 .track .index { color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -79,6 +86,12 @@
 .track .ver { text-align: left; }
 .track.playing .title { color: var(--accent-hi); }
 .track.playing .index { color: var(--accent-hi); }
+/* The one that is sounding gets a lit edge, so it is findable in a long list without
+   scanning every title. */
+.track.playing {
+  background: linear-gradient(90deg, var(--accent-soft) 0%, transparent 62%);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
 
 /* The equaliser bars that mark the row currently sounding. */
 .playing-bars { display: flex; align-items: flex-end; gap: 2px; height: 13px; }
@@ -122,4 +135,34 @@
   .track { --track-cols: 40px 1fr 56px !important; }
   .track .ver { display: none; }
   .track-head { display: none; }
+}
+
+
+/* ── the list arriving ─────────────────────────────────────────────────────
+
+   Rows come in together with a short stagger. Enough that the list assembles rather
+   than blinking into place, and short enough that by the time the eye reaches the
+   bottom of the screen it is already finished. Only the first dozen are staggered:
+   past that nobody is watching, and a hundred delayed rows is a hundred animations. */
+
+.track {
+  animation: row-in 260ms var(--ease) both;
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+}
+.track:nth-child(1)  { animation-delay: 0ms; }
+.track:nth-child(2)  { animation-delay: 18ms; }
+.track:nth-child(3)  { animation-delay: 36ms; }
+.track:nth-child(4)  { animation-delay: 54ms; }
+.track:nth-child(5)  { animation-delay: 72ms; }
+.track:nth-child(6)  { animation-delay: 90ms; }
+.track:nth-child(7)  { animation-delay: 108ms; }
+.track:nth-child(8)  { animation-delay: 126ms; }
+.track:nth-child(9)  { animation-delay: 144ms; }
+.track:nth-child(10) { animation-delay: 162ms; }
+.track:nth-child(n+11) { animation-delay: 176ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .track { animation: none; }
 }

@@ -34,21 +34,32 @@
   opacity: 0.5;
   transform: translate3d(0, 0, 0) scale(1.3);
   will-change: transform;
+  /* Faded out rather than cut off.
+   *
+   * The header is clipped, so without this the artwork ends in a hard horizontal line
+   * across the page. Veiling that line meant painting the bottom of the header a solid
+   * colour and hoping it matched the ground below, which it stopped doing the moment
+   * the ground became a gradient. Fading the art itself needs no such luck. */
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 52%, transparent 97%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 52%, transparent 97%);
 }
 .hero-art.flat {
   /* No artwork yet: a wash built from the title, so the page still has a temperature. */
   background-image: radial-gradient(120% 90% at 20% 0%,
-      hsl(var(--hue) 40% 28%), transparent 70%),
+      hsl(var(--hue) 42% 22%), transparent 70%),
     radial-gradient(120% 90% at 90% 20%,
-      hsl(calc(var(--hue) + 48) 35% 22%), transparent 65%);
+      hsl(calc(var(--hue) + 48) 38% 17%), transparent 65%);
   filter: blur(40px);
 }
+/* Only a darkener now, so the title reads against whatever the artwork happens to be.
+   It fades out with the art rather than ending in a colour of its own. */
 .hero-veil {
   position: absolute; inset: 0; z-index: -1;
   background: linear-gradient(180deg,
-    color-mix(in srgb, var(--surface) 30%, transparent) 0%,
-    color-mix(in srgb, var(--surface) 72%, transparent) 45%,
-    var(--surface) 96%);
+    rgba(0, 0, 0, 0.30) 0%,
+    rgba(0, 0, 0, 0.52) 46%,
+    rgba(0, 0, 0, 0.34) 78%,
+    transparent 100%);
 }
 
 .hero-row { display: flex; gap: var(--s6); align-items: flex-end; }
@@ -76,7 +87,7 @@
   border-radius: 50%;
   background: rgba(10, 13, 11, 0.66);
   backdrop-filter: blur(6px);
-  color: #fff;
+  color: var(--text-on-color);
   opacity: 0;
   transform: scale(0.9);
   transition: opacity var(--fast), transform var(--fast);
@@ -373,7 +384,17 @@ textarea.card-edit {
 .deck-arrow[disabled] { opacity: 0.25; cursor: default; }
 
 .deck-dots { display: flex; justify-content: center; gap: 6px; margin-top: var(--s4); }
+/* A dot is 7px because that is the right size to look at, and 7px is far too small to
+   hit with a thumb. The dot keeps its size; the target around it does not. */
+.deck-dot::after {
+  content: "";
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 30px; height: 30px;
+  transform: translate(-50%, -50%);
+}
 .deck-dot {
+  position: relative;
   width: 7px; height: 7px; padding: 0;
   border: 0; border-radius: 50%;
   background: var(--line-2);
@@ -528,8 +549,9 @@ textarea.card-edit {
 /* ── adding a render from the facts line ──────────────────────────────────── */
 
 .fact-add {
+  position: relative;
   display: inline-grid; place-items: center;
-  width: 22px; height: 22px;
+  width: 24px; height: 24px;
   margin-left: 2px;
   vertical-align: -5px;
   border: 0; border-radius: 50%;
@@ -537,6 +559,10 @@ textarea.card-edit {
   color: var(--text-2);
   cursor: pointer;
   transition: background var(--fast), color var(--fast), transform var(--fast);
+}
+/* Same again: small to look at, big enough to press. */
+.fact-add::after {
+  content: ""; position: absolute; inset: -8px;
 }
 .fact-add:hover { background: var(--accent); color: var(--text-on-accent); }
 .fact-add:active { transform: scale(0.9); }

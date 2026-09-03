@@ -214,8 +214,12 @@ function wireAB(root, ctx) {
       const chip = J.$(`.slot-pick[data-slot="${slot}"]`, bar);
       if (!chip) continue;
       const held = playing ? J.player.state.slots[slot] : { version: null, preset: null };
-      const label = held.version
-        ? `v${held.version.n}${held.preset ? " &middot; " + J.esc(held.preset.name) : ""}`
+      /* With nothing playing, A still has an answer: the render that would play. Saying
+       * "not set" next to a song that plainly has three renders reads as something being
+       * broken, and it made you press it to find out what it meant. */
+      const shown = held.version || (slot === "A" ? ctx.currentVersion() : null);
+      const label = shown
+        ? `v${shown.n}${held.preset ? " &middot; " + J.esc(held.preset.name) : ""}`
         : "not set";
       J.$(".v", chip).innerHTML = label;
       chip.classList.toggle("live", playing && J.player.state.active === slot && !!held.version);

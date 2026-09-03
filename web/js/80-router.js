@@ -23,9 +23,41 @@ J.router = (function () {
     return { view: "missing", params: { path: pathPart } };
   }
 
-  async function go() {
+  /* A thin line at the very top while a screen is being fetched.
+   *
+   * Only after a moment. Navigation is usually a couple of hundred milliseconds, and a
+   * bar that flashes for every one of those is worse than no bar: it reads as the app
+   * struggling. Past about a fifth of a second a person has started to wonder, and that
+   * is when it is worth saying something. */
+  let barTimer = null;
+  function showProgress() {
+    clearTimeout(barTimer);
+    barTimer = setTimeout(() => {
+      const bar = J.$("#navBar");
+      if (bar) { bar.hidden = false; bar.classList.add("running"); }
+    }, 180);
+  }
+  function hideProgress() {
+    clearTimeout(barTimer);
+    const bar = J.$("#navBar");
+    if (!bar || bar.hidden) return;
+    bar.classList.remove("running");
+    bar.classList.add("done");
+    setTimeout(() => { bar.hidden = true; bar.classList.remove("done"); }, 260);
+  }
+
+  async function go(options) {
     const { view, params } = parse();
     const mine = ++token;
+    /* Refreshing the screen you are already on is not the same as arriving at a new one.
+     *
+     * Fourteen places reload the song page after a change: a render added, a preset
+     * renamed, an album joined. Blanking to a skeleton for each of those makes an edit
+     * look like a page load, and the thing you just did flashes out of existence before
+     * it comes back. So a refresh keeps what is on screen until the new content is
+     * ready, and only a genuine navigation gets the skeleton. */
+    const inPlace = !!(options && options.inPlace) && location.hash === currentPath;
+    showProgress();
 
     /* A fresh element every time, rather than emptying the old one.
      *
@@ -36,11 +68,23 @@ J.router = (function () {
     const old = J.$("#view");
     const root = document.createElement("div");
     root.id = "view";
-    root.className = old.className;
+    // A fresh node either way: views attach delegated handlers to it, and reusing the
+    // old one left every previous screen's listeners attached.
+    root.className = old.className + (inPlace ? "" : " entering");
+    const wasScrolled = old.scrollTop;
+    if (inPlace) root.innerHTML = old.innerHTML;
     old.replaceWith(root);
+    if (inPlace) root.scrollTop = wasScrolled;
+
+    const settle = () => {
+      hideProgress();
+      // Next frame, so the browser has the starting state to animate away from.
+      requestAnimationFrame(() => root.classList.remove("entering"));
+    };
 
     const screen = J.views[view];
     if (!screen) {
+      settle();
       root.innerHTML = `<div class="section"><div class="empty">
         <h3>Nothing here</h3>
         <p>That screen is not part of this build. It may be a module that is switched off.</p>
@@ -49,13 +93,20 @@ J.router = (function () {
       return;
     }
 
-    root.innerHTML = "";
+    /* Something in roughly the right shape, right away. The alternative is an empty
+     * rectangle for as long as the fetches take, which reads as the app having broken
+     * rather than as the app working. */
+    if (!inPlace) {
+      root.innerHTML = J.skeleton(view === "song" ? "song" : "list");
+      requestAnimationFrame(() => root.classList.remove("entering"));
+    }
     try {
       await screen.render(root, params);
     } catch (e) {
       // A view that throws must say so. A blank panel with a console error is the
       // failure that wastes the most time.
       if (mine !== token) return;
+      settle();
       root.innerHTML = `<div class="section"><div class="empty">
         <h3>This screen did not load</h3>
         <p>${J.esc(e.message)}</p>
@@ -64,9 +115,13 @@ J.router = (function () {
       return;
     }
     if (mine !== token) return;
+    settle();
     currentPath = location.hash;
     J.markNav(view);
-    root.scrollTop = 0;
+    // Only a real navigation goes back to the top. Writing the content resets the
+    // scroll, so the position has to be the one captured before the swap, not the one
+    // read back afterwards, which is always zero.
+    root.scrollTop = inPlace ? wasScrolled : 0;
   }
 
   return {
@@ -74,7 +129,10 @@ J.router = (function () {
       window.addEventListener("hashchange", go);
       go();
     },
-    reload() { go(); },
+    /* Redraw the current screen without it looking like a page load. */
+    reload() { go({ inPlace: true }); },
+    /* The full treatment, for when the screen really is being replaced. */
+    hard() { go(); },
     get view() { return parse().view; },
   };
 })();

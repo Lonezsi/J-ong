@@ -5,12 +5,36 @@
   flex-wrap: wrap;              /* so the arrangement strip gets a line of its own */
   padding: var(--s3);
   border-radius: var(--r-md);
-  background: var(--surface-2);
+  background: var(--grad-surface);
   border: 1px solid transparent;
   margin-bottom: var(--s2);
   transition: border-color var(--fast), background var(--fast);
 }
-.render-row:hover { border-color: var(--line); }
+/* The row is the button. Forty four copies of the same green pill down a list is a wall
+   of shouting, and the thing you are choosing between is the render, not the pill. */
+.render-row[role="button"] { cursor: pointer; }
+.render-row:hover {
+  border-color: var(--line-2);
+  background: var(--grad-raised);
+}
+.render-row:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+
+/* Says what pressing the row does, and only steps forward when you are on it. */
+.row-go {
+  flex: none;
+  padding: 6px var(--s4);
+  border-radius: var(--r-pill);
+  background: var(--elevated);
+  color: var(--text-3);
+  font-size: 12.5px; font-weight: 650;
+  white-space: nowrap;
+  transition: background var(--fast), color var(--fast);
+}
+.render-row:hover .row-go,
+.render-row:focus-visible .row-go {
+  background: var(--grad-accent);
+  color: var(--text-on-accent);
+}
 .render-row .grow { min-width: 0; flex: 1; display: block; }
 /* One that has found its song stays readable but stops asking for attention. */
 .render-row.used { opacity: 0.62; }
