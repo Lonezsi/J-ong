@@ -81,18 +81,22 @@ J.views.song = {
                 <svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5l12 7-12 7z" fill="currentColor"/></svg>
               </button>
               <span class="hero-facts">
-                ${current ? `<b>v${current.n}</b>` : "<span>no renders</span>"}
-                ${current && current.duration ? `<span class="dot"></span><span>${J.time(current.duration)}</span>` : ""}
-                <span class="dot"></span>
-                <span>${versions.length} render${versions.length === 1 ? "" : "s"}</span>
-                ${has("versions") ? `
-                  <button class="fact-add" data-act="addrender" title="Add a render"
-                          aria-label="Add a render">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
-                         stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
-                      <path d="M12 5v14M5 12h14"/>
-                    </svg>
-                  </button>` : ""}
+                ${versions.length ? `
+                  <b>v${current.n}</b>
+                  ${current.duration ? `<span class="dot"></span><span>${J.time(current.duration)}</span>` : ""}
+                  <span class="dot"></span>
+                  <span>${versions.length} render${versions.length === 1 ? "" : "s"}</span>
+                  ${has("versions") ? `
+                    <button class="fact-add" data-act="addrender" title="Add a render"
+                            aria-label="Add a render">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+                           stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                        <path d="M12 5v14M5 12h14"/>
+                      </svg>
+                    </button>` : ""}`
+                : has("versions") ? `
+                  <button class="btn sm primary" data-act="addrender">Add the first render</button>`
+                : "<span>no renders</span>"}
                 ${albums.length ? '<span class="dot"></span>' : ""}
                 ${albums.map((a) => `<a href="#/album/${a.id}" data-link>${J.esc(a.title)}</a>`)
                   .join('<span class="dot"></span>')}
@@ -538,34 +542,14 @@ function wireHero(root, ctx) {
     /* The plus beside the render count. Two ways in, because a render either comes off
      * this machine or is already waiting in the list. */
     if (act.dataset.act === "addrender") {
+      /* Straight to the list when there is one.
+       *
+       * This used to ask "from a file, or from the list?" first, which is a whole extra
+       * press to answer a question the answer to which is almost always "the list", and
+       * which cannot be answered at all until you know there is a list. The list opens,
+       * with uploading a file offered inside it. */
       if (!J.state.modules.includes("renders")) { J.$("#renderPick", root).click(); return; }
-      const pick = await J.sheet({
-        title: "Add a render",
-        sub: `It becomes v${(ctx.versions.length || 0) + 1} of ${ctx.song.title}.`,
-        confirm: "",
-        cancel: "Not now",
-        body: `<div class="pick-list">
-          <button class="pick-row" data-how="file">
-            <span class="pick-plus">&uarr;</span>
-            <span class="grow"><span class="t">Upload a file</span>
-            <span class="s">From this computer</span></span>
-          </button>
-          <button class="pick-row" data-how="list">
-            <span class="pick-plus">&darr;</span>
-            <span class="grow"><span class="t">Take one from Renders</span>
-            <span class="s">Something already waiting in the library</span></span>
-          </button>
-        </div>`,
-        onMount(sheet, close) {
-          sheet.addEventListener("click", (event) => {
-            const hit = event.target.closest("[data-how]");
-            if (hit) close({ how: hit.dataset.how });
-          });
-        },
-      });
-      if (!pick) return;
-      if (pick.how === "file") { J.$("#renderPick", root).click(); return; }
-      const made = await J.renders.pickFor(ctx.song);
+      const made = await J.renders.pickFor(ctx.song, () => J.$("#renderPick", root).click());
       if (made) J.router.reload();
       return;
     }

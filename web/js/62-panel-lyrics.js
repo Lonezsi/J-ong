@@ -100,7 +100,9 @@ J.blockLyrics = async function (block, ctx) {
     if (!sheets.length) {
       track.style.transform = "translate3d(0,0,0)";
       track.innerHTML = `<article class="lyric-card"><div class="card-body empty-words"
-        data-act="edit">Nothing written yet. Click here to start.</div></article>`;
+        data-act="edit">Click here and write. The first line becomes the title, and a
+        song can hold several sets of words at once so a rewrite never overwrites the
+        one you had.</div></article>`;
       return;
     }
 

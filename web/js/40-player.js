@@ -484,7 +484,13 @@ J.playSong = async function (song, queue) {
   if (!data) return;
   const versions = data.versions || [];
   if (!versions.length) {
-    J.toast("That song has no renders yet. Upload one first.", "bad");
+    /* Nothing to play, so go where something can be done about it.
+     *
+     * This used to be a message telling you to upload a render, which is instructions
+     * rather than help: the place to do that was one screen away and you had to know
+     * that. The song page is that place, and it opens with the button on it. */
+    J.toast(`${song.title} has no renders yet.`);
+    location.hash = `#/song/${song.id}`;
     return;
   }
   const current = versions.find((v) => v.id === data.current_version_id) || versions[0];

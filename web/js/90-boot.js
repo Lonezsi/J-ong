@@ -200,6 +200,34 @@ async function boot() {
   });
   J.on("songs:changed", () => { if (J.router.view === "library") J.router.reload(); });
 
+  /* What the keyboard does, on the one key nobody has to be told about.
+   *
+   * Five shortcuts existed and there was nowhere at all to find out they did. A key that
+   * is a question mark asking a question is the one piece of interface that explains
+   * itself, and the rail says it quietly so it can be found without knowing first. */
+  function showKeys() {
+    if (J.$(".sheet")) return;
+    const row = (keys, what) => `<div class="key-row">
+      <span class="keys">${keys.map((k) => `<kbd>${J.esc(k)}</kbd>`).join("")}</span>
+      <span>${J.esc(what)}</span></div>`;
+    J.sheet({
+      title: "Keyboard",
+      sub: "Anywhere that is not a text field.",
+      confirm: "",
+      cancel: "Close",
+      body: [
+        row(["Space"], "play or pause"),
+        row(["X"], "swap A and B"),
+        row(["/"], "jump to search"),
+        row(["←", "→"], "page between sets of lyrics"),
+        row(["Shift", "←", "→"], "previous or next song"),
+        row(["Backspace"], "remove the selected section, in the compositor"),
+        row(["Esc"], "close this"),
+        row(["?"], "show this again"),
+      ].join(""),
+    });
+  }
+
   // ── keyboard ─────────────────────────────────────────────────────────────
   document.addEventListener("keydown", (e) => {
     const typing = e.target.closest("input, textarea, select, [contenteditable]");
@@ -209,7 +237,11 @@ async function boot() {
     if (e.key === "x" || e.key === "X") { e.preventDefault(); J.player.swap(); }
     if (e.key === "ArrowRight" && e.shiftKey) J.player.step(1);
     if (e.key === "ArrowLeft" && e.shiftKey) J.player.step(-1);
+    if (e.key === "?") { e.preventDefault(); showKeys(); }
   });
+
+  const keysButton = J.$("#railKeys");
+  if (keysButton) keysButton.addEventListener("click", showKeys);
 
   J.emit("boot");
   J.router.start();

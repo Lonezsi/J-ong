@@ -46,8 +46,10 @@ J.views.sync = {
             </div>`).join("")
           : `<div class="empty">
                <h3>No folders watched yet</h3>
-               <p>Point J-ong at the folder your exports land in. It reads them, it never
-                  writes to them.</p>
+               <p>Point J-ong at the folder your exports land in and it will notice new
+                  bounces arriving, so a render reaches the library without you carrying
+                  it there. It reads that folder and never writes to it, and nothing is
+                  imported until you say so.</p>
                <button class="btn primary" data-act="add" style="margin-top:var(--s4)">Add a folder</button>
              </div>`}
         </div>

@@ -90,10 +90,12 @@ J.renders = {
 
   /* The other direction: a song is open and wants one of the waiting renders.
    * Resolves to the new version, or null. */
-  async pickFor(song) {
+  async pickFor(song, onUpload) {
     const data = await J.get("/api/renders");
     const waiting = data.renders || [];
+    // Nothing waiting and somewhere else to go: go there rather than saying no.
     if (!waiting.length) {
+      if (onUpload) { onUpload(); return null; }
       J.toast("Nothing is waiting in the renders list.");
       return null;
     }
@@ -104,7 +106,16 @@ J.renders = {
       wide: true,
       confirm: "",
       cancel: "Not now",
-      body: `<div class="pick-list">${waiting.map((render) => `
+      body: `<div class="pick-list">
+        ${onUpload ? `
+          <button class="pick-row new" data-upload="1">
+            <span class="pick-plus">&uarr;</span>
+            <span class="grow truncate">
+              <span class="t truncate">Upload a file instead</span>
+              <span class="s">From this computer</span>
+            </span>
+          </button>` : ""}
+        ${waiting.map((render) => `
         <div class="pick-row" data-render="${render.id}">
           <button class="icon-btn play sm" data-hear="${render.id}"
                   aria-label="Play ${J.esc(render.name)}">
@@ -119,6 +130,7 @@ J.renders = {
       onMount(sheet, close) {
         const audio = new Audio();
         sheet.addEventListener("click", (e) => {
+          if (e.target.closest("[data-upload]")) { audio.pause(); close({ upload: true }); return; }
           const hear = e.target.closest("[data-hear]");
           if (hear) {
             e.stopPropagation();
@@ -138,6 +150,7 @@ J.renders = {
       },
     });
     if (!chosen) return null;
+    if (chosen.upload) { if (onUpload) onUpload(); return null; }
 
     return J.try(async () => {
       const result = await J.post(`/api/renders/${chosen.id}/attach`, { song_id: song.id });

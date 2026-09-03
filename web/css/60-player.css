@@ -3,7 +3,7 @@
 .player {
   grid-area: player;
   height: var(--player-h);
-  background: var(--grad-surface);
+  background: var(--grad-player);
   border: 1px solid var(--line);
   box-shadow: var(--edge-top), var(--shadow-2);
   border-radius: var(--r-lg);

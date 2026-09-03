@@ -66,6 +66,13 @@
   --grad-sunken:   linear-gradient(180deg, #05070600 0%, #00000040 100%),
                    linear-gradient(180deg, #090D0A 0%, #060907 100%);
 
+  /* The player. Angled rather than straight down, and barely there: about one and a
+     half percent of lightness across the whole bar. Enough that the eye reads it as a
+     surface catching light from the corner of the room rather than as a painted panel,
+     and not enough to notice as a gradient. */
+  --grad-player: linear-gradient(104deg,
+    #151C18 0%, #121815 38%, #0E1310 72%, #0C100D 100%);
+
   /* The accent, with the light coming from the same place as everywhere else. */
   --grad-accent:   linear-gradient(180deg, #64C68A 0%, #47A26B 100%);
   --grad-accent-hi: linear-gradient(180deg, #7ADCA0 0%, #54B37A 100%);

@@ -14,6 +14,23 @@
 "use strict";
 
 J.blockSound = async function (panel, ctx) {
+  /* An equaliser for a song with no audio on it is a control with nothing behind it.
+   *
+   * It rendered in full on a brand new song: thirty knobs and a frequency curve for
+   * something that cannot be played, before the person has any idea what any of it is
+   * for. So until there is a render, the panel says what it is for instead. */
+  if (!ctx.versions.length) {
+    panel.innerHTML = `
+      <div class="block-head"><h2>Sound</h2></div>
+      <div class="empty">
+        <h3>Nothing to listen to yet</h3>
+        <p>This is where you hear the same bounce through two different equalisers and
+           pick one. It is only ever applied while you listen: J-ong never writes it into
+           the file, so nothing here can damage a mix.</p>
+      </div>`;
+    return;
+  }
+
   let presets = [];
   let active = null;
   let editor = null;

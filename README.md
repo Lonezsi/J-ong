@@ -17,6 +17,57 @@ Then open http://127.0.0.1:7900.
 
 ---
 
+## What each part is for
+
+Features are easy to list and harder to place. This is the job each one does, written as
+the moment you are actually in when you want it.
+
+**You just bounced a mix and want to know if it is better than the last one.**
+Drop it on the song. It becomes v14 and v13 stays exactly where it was. Put them in A and
+B and press `X`: both play at once with one silent, so the switch lands on the same bar of
+the other mix with no gap and no fade. That is the one thing this app is built around.
+
+**You bounced forty things and have no idea what half of them are.**
+They go in **Renders** and wait. A render arrives knowing the name of the project it came
+out of and nothing else; which song it belongs to is a question for later, when you are
+looking at the library rather than at a console that is about to close. Play one from the
+list before deciding. Nothing is filed until you file it.
+
+**The exports folder is where the renders are and you do not want to carry them.**
+Point **Folders** at it. J-ong notices new bounces arriving, reads that folder and never
+writes to it, and imports nothing until you say so.
+
+**The mix sounds right on headphones and wrong in the car.**
+The **Sound** panel is an equaliser and a limiter that exist only while you listen. Build
+a preset for each place you check mixes, then A and B two equalisers on the same bounce.
+Nothing is ever written into the file, so nothing here can damage a mix.
+
+**The words do not fit the section.**
+Open **Arrange**. J-ong listens to the render, works out the tempo and splits it into
+sections, and lays it out as it already is. Drag an edge to take four bars out of the
+intro; double click a section to send the chorus round twice. One track, everything on a
+beat. It is not a DAW and does not want to be: it answers the question "what if that part
+were shorter", and the render on disk is never rewritten.
+
+**You want to know which words land where.**
+Point a lyric card at a section. When that section plays, the card lights up, whether or
+not the compositor panel is open.
+
+**You are rewriting a verse and do not want to lose the one you have.**
+A song holds several sets of words at once, and each keeps its own history. The first line
+is the title, so there is nothing to name. Looking at an old revision is looking, not
+restoring.
+
+**You have a hundred songs and a shelf of grey rectangles.**
+Give them **artwork**. The library is the only place you will ever scan quickly, and the
+picture is what you scan by.
+
+**The face used for titles is not the one you want.**
+Upload your own in **Settings**. J-ong ships Orbitron because a licensed or shareware font
+cannot live in a public repository; yours stays in your own data directory.
+
+---
+
 ## What it does
 
 **Versions.** Every render of a song is kept and numbered. Upload one and it becomes v14;
@@ -31,6 +82,18 @@ is built around. Press **X** to swap.
 Arrow keys page between them sideways. Each alternative keeps its own history, so trying a
 different second verse never costs you the first, and restoring an old text is a new
 revision rather than an overwrite.
+
+**The renders list.** A bounce arrives and waits there, keeping the name of the project it
+came out of, until you say which song it is a version of. The same bytes arriving twice
+from two places are one entry, and attaching one to a song copies nothing: storage is
+content addressed, so a version is a row pointing at bytes that are already there.
+
+**The compositor.** One track, every edge on a beat. J-ong listens to the render, guesses
+the tempo, splits it into sections and lays it out as it already is, so switching it on
+changes nothing you can hear and the next edit does. Trim, move, duplicate, remove. While
+it is on, A and B compare two equalisers rather than two takes, because one set of
+scheduled clips feeds both decks. The tempo is a guess and says so; halve, double and tap
+are next to the number because no detector settles the octave reliably.
 
 **A real equaliser.** Not a bank of fixed sliders. Double click the display to add a node,
 drag it to move it in frequency and gain, roll the wheel over it to change Q, right click
@@ -251,6 +314,8 @@ one directory.
 | `/` | search |
 | `←` `→` | page between lyric alternatives |
 | `Shift` `←` `→` | previous or next song |
+| `Backspace` | remove the selected section, in the compositor |
+| `Esc` | close a dialog |
 
 ---
 

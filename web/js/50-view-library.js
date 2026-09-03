@@ -68,17 +68,58 @@ J.views.library = {
     const albums = albumData.albums || [];
 
     if (!songs.length && !albums.length && !term) {
+      /* The first screen anyone sees, so it says what this is for rather than that it
+       * is empty. Three steps, in the order they actually happen, each with the button
+       * that does it: nobody reads a paragraph and then goes looking. */
+      // Read now rather than from the boot snapshot: renders can arrive without any
+      // song existing yet, which is exactly the case this screen is for.
+      let waiting = 0;
+      if (J.state.modules.includes("renders")) {
+        try { waiting = (await J.get("/api/renders")).waiting || 0; } catch (e) { waiting = 0; }
+      }
       root.innerHTML = `
         <div class="section">
-          <div class="empty">
-            <h3>Nothing in here yet</h3>
-            <p>Add a song by hand, or point J-ong at the folder your renders land in
-               and it will find them.</p>
-            <div class="row" style="justify-content:center;margin-top:var(--s4)">
-              <button class="btn primary" data-new-song>New song</button>
-              ${J.state.modules.includes("sync")
-                ? '<a class="btn" href="#/sync" data-link>Watch a folder</a>' : ""}
-            </div>
+          <div class="empty start-here">
+            <h3>A song here is not a file</h3>
+            <p>It is one place that holds every bounce of a track, the words, the artwork
+               and the way you want it cut. Renders come and go underneath it; the song
+               stays.</p>
+
+            <ol class="steps">
+              <li>
+                <span class="step-n">1</span>
+                <span class="step-body">
+                  <b>Start a song</b>
+                  <span>Give it a name. You can rename it later and J-ong keeps the old
+                        names, the way Steam does.</span>
+                  <button class="btn sm primary" data-new-song>New song</button>
+                </span>
+              </li>
+              <li>
+                <span class="step-n">2</span>
+                <span class="step-body">
+                  <b>Get a render onto it</b>
+                  <span>${waiting
+                    ? `${waiting} render${waiting === 1 ? " is" : "s are"} already waiting
+                       to be told which song they belong to.`
+                    : "Upload a bounce, or point J-ong at the folder your exports land in "
+                      + "and it will notice them arriving."}</span>
+                  ${waiting
+                    ? '<a class="btn sm" href="#/renders" data-link>Open Renders</a>'
+                    : (J.state.modules.includes("sync")
+                        ? '<a class="btn sm" href="#/sync" data-link>Watch a folder</a>' : "")}
+                </span>
+              </li>
+              <li>
+                <span class="step-n">3</span>
+                <span class="step-body">
+                  <b>Then the rest is on the song</b>
+                  <span>Write the words, compare two bounces through two equalisers, or
+                        cut four bars out of the intro. All of it lives on the song's own
+                        page, nothing behind a menu.</span>
+                </span>
+              </li>
+            </ol>
           </div>
         </div>`;
       // The handler is wired below, after this block used to return straight past it,

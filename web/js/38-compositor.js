@@ -312,24 +312,7 @@ J.compositor = (function () {
         }
       }
 
-      if (what === "redetect") {
-        const version = ctx.currentVersion();
-        if (!version) { J.toast("There is no render to listen to yet.", "bad"); return; }
-        act.disabled = true;
-        act.textContent = "Listening…";
-        const read = await J.try(() => A.detect(version));
-        if (read && read.silent) {
-          J.toast("That render is silent. The project bounced to nothing, so there is "
-                  + "no beat to find.", "bad");
-        } else if (read) {
-          J.toast(`${Math.round(read.bpm)} bpm, ${read.parts.length} section`
-                  + `${read.parts.length === 1 ? "" : "s"}. `
-                  + (read.confidence < 0.45
-                     ? "The beat was hard to hear, so check it."
-                     : "All of it can be changed."));
-        }
-        draw();
-      }
+      if (what === "redetect") await layOut(act);
     });
 
     root.addEventListener("change", (e) => {
@@ -338,6 +321,39 @@ J.compositor = (function () {
       A.setTempo(parseFloat(bpm.value));
       draw();
     });
+
+    /* Work out the tempo and the sections, and lay the song out as it already is.
+     *
+     * A fresh layout is every section in order, untrimmed and unmoved: it sounds exactly
+     * like the render it came from. So switching it on changes nothing you can hear,
+     * which means there is no reason to make anyone do it as a separate act, and the
+     * next edit is audible the moment it is made.
+     */
+    async function layOut(button) {
+      const version = ctx.currentVersion();
+      if (!version) { J.toast("There is no render to listen to yet.", "bad"); return null; }
+      const wasEmpty = !A.state.clips.length;
+      if (button) { button.disabled = true; button.textContent = "Listening…"; }
+      const read = await J.try(() => A.detect(version));
+
+      if (read && read.silent) {
+        J.toast("That render is silent. The project bounced to nothing, so there is "
+                + "no beat to find.", "bad");
+      } else if (read) {
+        if (wasEmpty && !A.state.enabled) await A.setEnabled(true);
+        J.toast(`${Math.round(read.bpm)} bpm, ${read.parts.length} section`
+                + `${read.parts.length === 1 ? "" : "s"}. `
+                + (read.confidence < 0.45
+                   ? "The beat was hard to hear, so check the tempo."
+                   : "Drag an edge to trim, double click to repeat."));
+      }
+      draw();
+      return read;
+    }
+
+    /* Opening the panel on a song with no arrangement has exactly one thing you can do
+     * on it, and the file has just been read for the waveform anyway. So it does it. */
+    if (!A.state.clips.length) layOut(null);
 
     /* The playhead, while something is playing. */
     function follow() {
