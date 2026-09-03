@@ -83,7 +83,17 @@ J.views.sync = {
           </div>` : ""}`;
     }
 
-    root.addEventListener("click", async (e) => {
+    root.addEventListener("input", (e) => {
+    const picker = e.target.closest("#accent");
+    if (!picker) return;
+    // The swatch is the control; the native input behind it is only the colour wheel.
+    const holder = picker.closest(".swatch");
+    holder.style.setProperty("--picked", picker.value);
+    const hex = J.$(".swatch-hex", holder);
+    if (hex) hex.textContent = picker.value;
+  });
+
+  root.addEventListener("click", async (e) => {
       const act = e.target.closest("[data-act]");
       if (!act) return;
       const what = act.dataset.act;
@@ -162,8 +172,12 @@ J.views.settings = {
             <label class="sheet-label">Name
               <input class="field" id="libName" value="${J.esc(state.settings.library_name)}"></label>
             <label class="sheet-label">Accent colour
-              <input class="field" id="accent" type="color" value="${J.esc(state.settings.accent)}"
-                     style="height:44px;padding:4px"></label>
+              <span class="swatch" style="--picked:${J.esc(state.settings.accent)}">
+                <input id="accent" type="color" value="${J.esc(state.settings.accent)}">
+                <span class="swatch-dot"></span>
+                <span class="swatch-hex">${J.esc(state.settings.accent)}</span>
+              </span>
+            </label>
             <div><button class="btn primary sm" data-act="save-settings">Save</button></div>
           </div>
         </div>

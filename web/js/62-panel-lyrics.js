@@ -45,7 +45,6 @@ J.blockLyrics = async function (block, ctx) {
           ${s ? `<button class="btn ghost sm" data-act="history">History${
             s.revisions > 1 ? ` (${s.revisions})` : ""}</button>` : ""}
           <button class="btn ghost sm" data-act="add">${s ? "Add a version" : "Write lyrics"}</button>
-          ${many ? '<button class="btn ghost sm danger" data-act="drop">Delete this one</button>' : ""}
         </span>
       </div>
 
@@ -145,7 +144,17 @@ J.blockLyrics = async function (block, ctx) {
         <div class="card-body ${text ? "" : "empty-words"}"
              ${viewing ? "" : 'data-act="edit" title="Click to edit"'}>${
           text ? J.md(body) : "Nothing written yet. Click here to start."}</div>
-        ${partChip(s)}
+        <span class="card-foot-tools">
+          ${partChip(s)}
+          ${sheets.length > 1 ? `
+            <button class="icon-btn card-drop" data-act="drop"
+                    title="Delete these words" aria-label="Delete ${J.esc(title)}">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                   stroke-width="1.9" stroke-linecap="round">
+                <path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>
+              </svg>
+            </button>` : ""}
+        </span>
       </article>`;
     }).join("");
     place(false);
@@ -305,9 +314,15 @@ J.blockLyrics = async function (block, ctx) {
     }
 
     if (what === "drop") {
-      const sure = await J.confirm(`Delete “${s.name}”?`, "Its history goes too.", "Delete it");
+      // The button lives on a card now, so the card decides what is deleted rather than
+      // whichever one happened to be showing when the header was pressed.
+      const card = act.closest("[data-sheet]");
+      const target = card ? sheets.find((sh) => String(sh.id) === card.dataset.sheet) : s;
+      if (!target) return;
+      const sure = await J.confirm(`Delete “${target.name}”?`, "Its history goes too.",
+                                   "Delete it");
       if (!sure) return;
-      await J.try(() => J.del(`/api/lyrics/${s.id}`), "Deleted");
+      await J.try(() => J.del(`/api/lyrics/${target.id}`), "Deleted");
       at = Math.max(0, at - 1);
       history = null; viewing = null;
       await load(true);

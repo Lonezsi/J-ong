@@ -77,14 +77,24 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .row { display: flex; align-items: center; gap: var(--s3); }
 .row.wrap { flex-wrap: wrap; }
 
+/* Nothing here yet.
+ *
+ * A dashed outline is the convention for "drop something here", which is not what most
+ * of these are. They are a sentence explaining what this screen will hold and a way to
+ * put the first thing in it, so they read as a panel with a little light on it. */
 .empty {
-  padding: var(--s7) var(--s5);
+  padding: var(--s8) var(--s6);
   text-align: center;
   color: var(--text-2);
-  border: 1px dashed var(--line-2);
+  border: 1px solid var(--line);
   border-radius: var(--r-lg);
+  background:
+    radial-gradient(120% 100% at 50% 0%, rgba(84, 179, 122, 0.05), transparent 62%),
+    var(--grad-surface);
+  box-shadow: var(--edge-top);
 }
 .empty h3 { margin-bottom: var(--s2); color: var(--text); }
+.empty p { max-width: 46ch; margin-inline: auto; }
 
 /* Scrollbars, quiet but present. */
 * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.16) transparent; }

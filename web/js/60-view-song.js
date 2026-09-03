@@ -118,15 +118,16 @@ J.views.song = {
                   Compare
                 </button>
                 ${has("arrange") ? `
-                  <button class="icon-btn comp-toggle" id="compToggle"
-                          title="Compositor: cut and reorder this render by the bar"
-                          aria-label="Compositor" aria-expanded="false">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                  <button class="btn sm ghost comp-toggle" id="compToggle"
+                          title="Cut and reorder this render by the bar"
+                          aria-expanded="false">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
                          stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
                       <rect x="3" y="7" width="5" height="10" rx="1.4"/>
                       <rect x="10" y="9" width="4" height="6" rx="1.2"/>
                       <rect x="16" y="6" width="5" height="12" rx="1.4"/>
                     </svg>
+                    <span class="comp-toggle-label">Arrange</span>
                   </button>` : ""}
               </div>` : ""}
           </div>
@@ -279,9 +280,11 @@ function wireCompositor(root, ctx) {
   const paintButton = () => {
     button.classList.toggle("on", J.arrange.state.enabled);
     button.setAttribute("aria-expanded", String(open));
+    const label = J.$(".comp-toggle-label", button);
+    if (label) label.textContent = J.arrange.state.enabled ? "Arranged" : "Arrange";
     button.title = J.arrange.state.enabled
-      ? "Compositor is on: this song plays as arranged"
-      : "Compositor: cut and reorder this render by the bar";
+      ? "This song plays as arranged. Press to see the arrangement."
+      : "Cut and reorder this render by the bar";
   };
 
   async function show() {

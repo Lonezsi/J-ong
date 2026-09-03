@@ -4,6 +4,8 @@
   grid-area: player;
   height: var(--player-h);
   background: var(--grad-surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--edge-top), var(--shadow-2);
   border-radius: var(--r-lg);
   padding: 0 var(--s5);
   display: grid;
@@ -23,21 +25,38 @@
 .scrubber { display: flex; align-items: center; gap: var(--s3); width: 100%; }
 .scrubber .t { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; width: 38px; flex: none; }
 .scrubber .t.right { text-align: right; }
+/* Taller than it looks. The line is 4px because that is what suits the bar; the area
+   you can grab is 18px, because a 4px target is a game rather than a control. */
 .bar {
-  position: relative; flex: 1; height: 14px;
+  position: relative; flex: 1; height: 18px;
   display: flex; align-items: center;
   cursor: pointer;
+  touch-action: none;
 }
-.bar .track-line { position: absolute; inset: 5px 0; height: 4px; border-radius: var(--r-pill); background: var(--elevated); }
-.bar .fill { position: absolute; left: 0; top: 5px; height: 4px; border-radius: var(--r-pill); background: var(--text-2); }
+.bar .track-line {
+  position: absolute; inset: 7px 0; height: 4px; border-radius: var(--r-pill);
+  background: var(--grad-sunken);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+.bar .fill {
+  position: absolute; left: 0; top: 7px; height: 4px; border-radius: var(--r-pill);
+  background: linear-gradient(90deg, var(--accent-lo), var(--accent));
+}
 .bar .knob {
-  position: absolute; top: 2px; width: 10px; height: 10px; margin-left: -5px;
+  position: absolute; top: 3px; width: 12px; height: 12px; margin-left: -6px;
   border-radius: 50%; background: var(--text);
-  opacity: 0; transition: opacity var(--fast);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  opacity: 0; transform: scale(0.6);
+  transition: opacity var(--fast), transform var(--fast);
 }
-.bar:hover .fill, .bar.scrubbing .fill { background: var(--accent); }
-.bar:hover .knob, .bar.scrubbing .knob { opacity: 1; }
-.bar .buffered { position: absolute; left: 0; top: 5px; height: 4px; border-radius: var(--r-pill); background: rgba(255,255,255,0.09); }
+.bar:hover .fill, .bar.scrubbing .fill {
+  background: linear-gradient(90deg, var(--accent), var(--accent-hi));
+}
+.bar:hover .knob, .bar.scrubbing .knob { opacity: 1; transform: none; }
+.bar .buffered {
+  position: absolute; left: 0; top: 7px; height: 4px; border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.07);
+}
 
 .player-right { display: flex; align-items: center; justify-content: flex-end; gap: var(--s2); }
 .volume { display: flex; align-items: center; gap: var(--s2); width: 108px; }
@@ -56,7 +75,12 @@
   transition: background var(--fast), color var(--fast), border-color var(--fast);
 }
 .ab-chip:hover { border-color: var(--accent-line); color: var(--text); }
-.ab-chip.on { background: var(--accent); border-color: var(--accent); color: var(--text-on-accent); }
+.ab-chip.on {
+  background: var(--grad-accent);
+  border-color: transparent;
+  color: var(--text-on-accent);
+  box-shadow: var(--edge-top), 0 2px 8px rgba(84, 179, 122, 0.25);
+}
 .ab-chip[disabled] { opacity: 0.4; cursor: default; }
 
 /* ── expanded ─────────────────────────────────────────────────────────────── */
@@ -117,3 +141,10 @@
   transition: width 120ms linear;
 }
 .preparing-pct { font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+
+
+/* The player arriving, when something starts for the first time. It slides up from
+   under the edge of the window rather than appearing beneath the content. */
+.player { animation: player-in var(--med) var(--ease) both; }
+@keyframes player-in { from { opacity: 0; transform: translate3d(0, 14px, 0); } }
+@media (prefers-reduced-motion: reduce) { .player { animation: none; } }

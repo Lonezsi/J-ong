@@ -34,8 +34,9 @@
   margin-top: var(--s4);
   padding: var(--s4);
   border-radius: var(--r-lg);
-  background: var(--surface);
+  background: var(--grad-surface);
   border: 1px solid var(--line);
+  box-shadow: var(--edge-top), var(--shadow-2);
 }
 
 .comp-head {
@@ -68,7 +69,8 @@
   overflow-x: auto;
   overflow-y: hidden;
   border-radius: var(--r-md);
-  background: var(--bg-deep);
+  background: var(--grad-sunken);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
   outline: none;
   /* Held so the clips do not fight the page for a horizontal drag. */
   overscroll-behavior-x: contain;
@@ -101,19 +103,24 @@
   min-width: 14px;
   flex: none;
   border-radius: var(--r-sm);
+  /* Lit from above like everything else, and darker than before so the waveform drawn
+     on top of it is the thing you read rather than the block underneath. */
   background: linear-gradient(180deg,
-    hsl(var(--hue) 42% 30%), hsl(var(--hue) 38% 22%));
-  border: 1px solid hsl(var(--hue) 40% 40%);
+    hsl(var(--hue) 44% 24%) 0%, hsl(var(--hue) 40% 15%) 100%);
+  border: 1px solid hsl(var(--hue) 38% 30%);
+  box-shadow: var(--edge-top);
   overflow: hidden;
   cursor: grab;
   user-select: none;
   transition: filter var(--fast), box-shadow var(--fast);
 }
 .comp-clip:hover { filter: brightness(1.14); }
-.comp-clip.on { box-shadow: 0 0 0 2px var(--accent); }
+.comp-clip.on { box-shadow: 0 0 0 2px var(--accent), var(--edge-top); }
 .comp-clip.holding { cursor: grabbing; filter: brightness(1.2); z-index: 2; }
 /* The one being heard right now. */
-.comp-clip.live { box-shadow: inset 0 2px 0 var(--accent-hi); }
+.comp-clip.live {
+  box-shadow: inset 0 2px 0 var(--accent-hi), 0 0 20px rgba(84, 179, 122, 0.2);
+}
 
 .comp-wave {
   position: absolute; inset: 0;
@@ -215,7 +222,7 @@
 .render-shape .seg {
   flex: var(--grow) 1 0;
   background: linear-gradient(180deg,
-    hsl(var(--hue) 40% 32%), hsl(var(--hue) 36% 24%));
+    hsl(var(--hue) 42% 26%) 0%, hsl(var(--hue) 38% 16%) 100%);
 }
 .render-shape canvas { width: 100%; height: 100%; display: block; }
 
@@ -253,4 +260,56 @@
   .comp-grip { width: 16px; }
   .comp-hint { display: none; }
   .comp-body { padding: var(--s3); }
+}
+
+
+/* The drawer opening. The clips come in after the panel has finished making room, so
+   the two movements read as one thing arriving rather than two things competing. */
+.comp-drawer.open .comp-clip {
+  animation: clip-in 240ms var(--ease) both;
+  animation-delay: 90ms;
+}
+@keyframes clip-in {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .comp-drawer.open .comp-clip { animation: none; }
+}
+
+/* The row of things that act on one card, sitting on the card they act on. */
+.card-foot-tools {
+  display: flex; align-items: center; gap: var(--s2);
+  margin-top: var(--s4);
+}
+/* Quiet until wanted. Deleting a set of words is not something to be invited into. */
+.card-drop {
+  width: 30px; height: 30px;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--fast), color var(--fast), background var(--fast);
+}
+.lyric-card:hover .card-drop,
+.lyric-card:focus-within .card-drop { opacity: 1; }
+.card-drop:hover { color: var(--bad-hi); background: rgba(212, 104, 94, 0.12); }
+
+/* A pointer is not always there to hover with. */
+@media (hover: none) {
+  .card-drop { opacity: 1; }
+}
+
+/* The way into the compositor. Named rather than left as a glyph nobody can be expected
+   to recognise, and it says which of its two states it is in. */
+.comp-toggle { display: inline-flex; align-items: center; gap: 6px; }
+.comp-toggle.on {
+  background: var(--accent-soft);
+  color: var(--accent-hi);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+}
+.comp-toggle.on:hover { background: rgba(84, 179, 122, 0.2); }
+
+/* On a phone the row already holds A, Compare and this; the word is the first thing
+   that can go. */
+@media (max-width: 560px) {
+  .comp-toggle-label { display: none; }
+  .comp-toggle { padding: 0 var(--s3); }
 }
