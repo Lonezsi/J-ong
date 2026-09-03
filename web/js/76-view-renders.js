@@ -169,9 +169,27 @@ J.views.renders = {
   async render(root) {
     let rows = [];
     let showAll = false;
-    let playing = null;
-    const audio = new Audio();
-    audio.addEventListener("ended", () => { playing = null; draw(); });
+    /* Renaming, reachable from the menu as well as from a control, so there is one
+     * implementation of it rather than a menu item pressing a button that may not be
+     * on the row any more. */
+    async function renameRender(render) {
+      const fields = await J.sheet({
+        title: "Rename this render",
+        sub: "Only what it is called here. The file keeps its own name.",
+        confirm: "Rename",
+        body: `<input class="field" name="name" value="${J.esc(render.name)}">`,
+      });
+      if (!fields || !fields.name.trim()) return null;
+      return J.try(async () => {
+        await J.patch(`/api/renders/${render.id}`, { name: fields.name.trim() });
+        await load();
+      });
+    }
+
+    /* Whether a row is the one sounding is the player's business now, not a flag kept
+     * here that could disagree with it. */
+    const isSounding = (render) => !!(J.player.state.song
+      && J.player.state.song.id === `render:${render.id}`);
 
     let shapes = {};
 
@@ -204,13 +222,19 @@ J.views.renders = {
         <div class="render-row ${used ? "used" : ""}" data-id="${render.id}"
              ${used ? "" : 'data-act="attach" role="button" tabindex="0"'}
              ${used ? "" : `aria-label="Add ${J.esc(render.name)} to a song"`}>
+          <button class="render-art" data-act="makesong"
+                  title="Make a song from ${J.esc(render.name)}"
+                  aria-label="Make a song from ${J.esc(render.name)}">
+            ${J.cover({ title: render.name, className: "cover" })}
+          </button>
           <button class="icon-btn play" data-act="play" aria-label="Play ${J.esc(render.name)}">
-            ${playing === render.id
+            ${J.player.state.playing && isSounding(render)
               ? `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 6h3v12H8zM13 6h3v12h-3z" fill="currentColor"/></svg>`
               : `<svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 5.5l11 6.5-11 6.5z" fill="currentColor"/></svg>`}
           </button>
           <span class="grow truncate">
-            <span class="render-name truncate" data-act="rename" title="Click to rename"
+            <span class="render-name truncate" data-act="makesong"
+                  title="Make a song from this render"
               >${J.esc(render.name)}</span>
             <span class="s truncate">
               ${render.duration ? J.time(render.duration) + " · " : ""}${J.bytes(render.size)}
@@ -276,7 +300,8 @@ J.views.renders = {
       const render = rows.find((r) => String(r.id) === node.dataset.id);
       if (!render) return null;
       return [
-        { label: playing === render.id ? "Stop" : "Play", icon: "play",
+        { label: isSounding(render) && J.player.state.playing ? "Pause" : "Play",
+          icon: "play",
           run: () => node.querySelector('[data-act="play"]').click() },
         render.waiting
           ? { label: "Add to a song", icon: "add", hint: "Click",
@@ -285,8 +310,13 @@ J.views.renders = {
               icon: "open",
               run: () => node.querySelector('[data-act="unattach"]').click() },
         { divider: true },
-        { label: "Rename", icon: "edit",
-          run: () => node.querySelector('[data-act="rename"]').click() },
+        { label: "Make a song from it", icon: "add",
+          run: () => node.querySelector('[data-act="makesong"]').click() },
+        { label: "Rename", icon: "edit", run: () => renameRender(render) },
+        J.state.modules.includes("playlists") ? {
+          label: "Add to a playlist", icon: "tag",
+          run: () => J.addToPlaylist({ kind: "render", id: render.id, title: render.name }),
+        } : null,
         { label: "Download", icon: "down",
           run: () => window.open(`/api/renders/${render.id}/audio`, "_blank") },
         render.source_path
@@ -342,25 +372,38 @@ J.views.renders = {
       if (!render) return;
 
       if (act.dataset.act === "play") {
-        if (playing === render.id) { audio.pause(); playing = null; return draw(); }
-        audio.src = `/api/renders/${render.id}/audio`;
-        audio.play().catch(() => J.toast("That render would not play.", "bad"));
-        playing = render.id;
+        /* Through the player, so a render appears in the bar with the transport, the
+         * scrubber and the volume, like everything else that makes a sound here. It
+         * used to be a bare Audio element with no way to pause it except this button
+         * and no way to see where you were. */
+        const queue = rows.filter((r) => r.waiting);
+        if (J.player.state.song && J.player.state.song.id === `render:${render.id}`) {
+          J.player.toggle();
+        } else {
+          await J.player.playRender(render, queue);
+        }
         return draw();
       }
 
-      if (act.dataset.act === "rename") {
+      if (act.dataset.act === "makesong") {
         const fields = await J.sheet({
-          title: "Rename this render",
-          confirm: "Rename",
-          body: `<input class="field" name="name" value="${J.esc(render.name)}">`,
+          title: "Make a song from this render",
+          sub: "The render becomes its first version. It keeps its own name in the list.",
+          confirm: "Make the song",
+          body: `<input class="field" name="title" value="${J.esc(render.name)}">`,
         });
-        if (!fields || !fields.name.trim()) return;
+        if (!fields || !fields.title.trim()) return;
         return J.try(async () => {
-          await J.patch(`/api/renders/${render.id}`, { name: fields.name.trim() });
-          await load();
+          const made = await J.post(`/api/renders/${render.id}/attach`,
+                                    { title: fields.title.trim() });
+          J.emit("renders:changed");
+          J.emit("songs:changed");
+          J.toast(`${made.song.title} made, with this as v${made.version.n}.`);
+          location.hash = `#/song/${made.song.id}`;
         });
       }
+
+      if (act.dataset.act === "rename") return renameRender(render);
 
       if (act.dataset.act === "attach") {
         const result = await J.renders.pick(render);
@@ -390,6 +433,13 @@ J.views.renders = {
           await load();
         });
       }
+    });
+
+    /* Redraw when the player changes, so the row that is sounding shows a pause and the
+     * others do not, however playback was started or stopped. */
+    J.on("player:change", function follow() {
+      if (!root.isConnected) { J.bus.removeEventListener("player:change", follow); return; }
+      draw();
     });
 
     await load();

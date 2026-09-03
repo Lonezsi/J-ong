@@ -41,6 +41,18 @@ def query(sql, args=()):
     return [dict(r) for r in connect().execute(sql, args).fetchall()]
 
 
+def table_exists(name):
+    """Is a table there.
+
+    Every feature is a module that may be switched off, and a module that is off never
+    creates its tables. So anything reaching across to another module's data has to ask
+    rather than assume: a playlist can hold renders, and a library with the renders
+    module turned off simply has none to hold.
+    """
+    row = one("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", (name,))
+    return bool(row)
+
+
 def one(sql, args=()):
     rows = query(sql, args)
     return rows[0] if rows else None

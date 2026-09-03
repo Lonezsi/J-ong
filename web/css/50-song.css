@@ -9,6 +9,38 @@
  * opens the list when you press it.
  */
 
+/* ── the ground under the whole song ──────────────────────────────────────
+
+   The song's own artwork, blown up and blurred to nothing, behind every part of the
+   page rather than only behind the header. It is fixed to the panel and does not
+   scroll, so reading down a long song moves the content across a still image instead
+   of dragging a picture along with it.
+
+   Faint on purpose. It has to sit under body text for the length of the page, so it is
+   a temperature rather than a picture: enough that the song feels like itself, not
+   enough to compete with a word. */
+.song-wash {
+  position: absolute; inset: 0;
+  z-index: 0;
+  background-size: cover;
+  background-position: center;
+  /* Pinned to the window rather than to the element, so reading down a long song moves
+     the content across a still image instead of dragging the picture along with it. */
+  background-attachment: fixed;
+  filter: blur(90px) saturate(160%);
+  opacity: 0.3;
+  transform: scale(1.35);
+  pointer-events: none;
+}
+.song-wash.flat {
+  background-image:
+    radial-gradient(80% 60% at 25% 10%, hsl(var(--hue) 45% 30%), transparent 70%),
+    radial-gradient(70% 60% at 85% 60%, hsl(calc(var(--hue) + 50) 40% 24%), transparent 65%);
+  filter: blur(70px);
+}
+/* Everything on the page sits above it. */
+.view > *:not(.song-wash) { position: relative; z-index: 1; }
+
 /* ── the header ───────────────────────────────────────────────────────────── */
 .hero {
   position: relative;

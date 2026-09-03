@@ -17,9 +17,16 @@ J.trackRow = function (song, opts) {
   const sub = o.sub !== undefined ? o.sub
     : (song.version_count ? `${song.version_count} version${song.version_count === 1 ? "" : "s"}` : "no renders yet");
 
+  /* The picture opens the song, the same as the title does. It is the largest thing in
+   * the row and the most obviously pressable, so having it do nothing of its own and
+   * fall through to "play" was the wrong way round. */
+  const leadWrapped = o.index !== undefined ? `<span class="lead">${lead}</span>`
+    : `<a class="lead" href="#/song/${song.id}" data-link
+          aria-label="Open ${J.esc(song.title)}">${lead}</a>`;
+
   return `
     <div class="track ${playing ? "playing" : ""}" data-song="${song.id}" tabindex="0" role="button">
-      <span class="lead">${lead}</span>
+      ${leadWrapped}
       <span class="truncate">
         <a class="title truncate" href="#/song/${song.id}" data-link
            title="Open ${J.esc(song.title)}">${J.esc(song.title)}</a>
@@ -113,6 +120,10 @@ J.wireTracks = function (root, songs) {
           const made = await J.renders.pickFor(song);
           if (made) J.emit("songs:changed");
         },
+      } : null,
+      J.state.modules.includes("playlists") ? {
+        label: "Add to a playlist", icon: "tag",
+        run: () => J.addToPlaylist({ kind: "song", id: song.id, title: song.title }),
       } : null,
       J.state.modules.includes("albums") ? {
         label: "Add to an album", icon: "tag",

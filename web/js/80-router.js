@@ -21,6 +21,7 @@ J.router = (function () {
     if (!parts.length) return { view: "library", params: query };
     if (parts[0] === "song") return { view: "song", params: Object.assign({ id: parts[1], tab: parts[2] }, query) };
     if (parts[0] === "album") return { view: "album", params: Object.assign({ id: parts[1] }, query) };
+    if (parts[0] === "playlist") return { view: "playlist", params: Object.assign({ id: parts[1] }, query) };
     if (J.views[parts[0]]) return { view: parts[0], params: query };
     return { view: "missing", params: { path: pathPart } };
   }

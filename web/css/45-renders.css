@@ -138,3 +138,18 @@
   .render-row .grow { flex: 1 1 60%; }
   .render-row .btn { flex: 1 1 auto; }
 }
+
+
+/* The render's own square. It is the biggest thing in the row and the most obviously
+   pressable, so it does the thing you would expect of it: makes a song out of this. */
+.render-art {
+  width: 40px; height: 40px; flex: none;
+  padding: 0; border: 0; border-radius: var(--r-sm);
+  background: none;
+  cursor: pointer;
+  transition: transform var(--fast);
+}
+.render-art .cover { width: 40px; height: 40px; border-radius: var(--r-sm); }
+.render-art:hover { transform: scale(1.06); }
+.render-art:active { transform: scale(0.97); }
+.render-name { cursor: pointer; }

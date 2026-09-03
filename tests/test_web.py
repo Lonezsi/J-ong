@@ -467,3 +467,96 @@ def test_no_stylesheet_has_an_unbalanced_brace():
         if opened != closed:
             broken[name] = "%d open, %d closed" % (opened, closed)
     assert not broken, "stylesheets that will stop the parser: %s" % broken
+
+
+def _members_of_literal(text, at):
+    """The names a `return { ... }` literal puts on the object, at its own level only.
+
+    Walked rather than matched line by line, because these modules are written both ways:
+    one name per line with a comment above it, and `return { create };` all on one.
+    """
+    depth, i, names = 0, at, set()
+    while i < len(text):
+        ch = text[i]
+        # Comments and strings are stepped over whole. Every one of these modules
+        # documents its members in prose above them, and the last word of a comment line
+        # sits exactly where a shorthand member sits: taking those as members would have
+        # let this test find "apply" in a paragraph about applying and pass regardless.
+        if text.startswith("//", i):
+            i = text.find("\n", i)
+            if i < 0:
+                break
+            continue
+        if text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = len(text) if end < 0 else end + 2
+            continue
+        if ch in "\"'`":
+            i += 1
+            while i < len(text) and text[i] != ch:
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+            continue
+        if ch in "{[(":
+            depth += 1
+        elif ch in "}])":
+            depth -= 1
+            if depth == 0:
+                break
+        elif depth == 1 and (ch.isalpha() or ch == "_"):
+            word = re.match(r"[A-Za-z_]\w*", text[i:]).group(0)
+            after = text[i + len(word):]
+            if word in ("get", "set", "async") and re.match(r"\s+[A-Za-z_]", after):
+                i += len(word)
+                continue
+            # A member is followed by its parentheses, its colon, the next comma, the end
+            # of the line, or the closing brace when it is the last of `return { one };`.
+            follows = after.lstrip(" \t")[:1]
+            if follows in ("(", ":", ",", "}", "\r", "\n", ""):
+                names.add(word)
+            i += len(word)
+            continue
+        i += 1
+    return names
+
+
+def test_no_module_is_called_for_something_it_does_not_have():
+    """A call into a module that lost the name it is called by.
+
+    J.audio.apply went away when A and B became two filter chains, because a sound now
+    has to be applied to a deck rather than to the output. The EQ editor kept calling it,
+    and the throw landed first thing in commit(), so every drag of a curve died before
+    onChange ever ran: the editor drew a new shape and nothing else in the app heard
+    about it. Nothing failed loudly. The EQ simply stopped working.
+
+    These are single object modules built by an IIFE that ends in one object literal, so
+    what a module has can be read off that literal, and what is asked of it can be read
+    off every J.<module>.<name>( in the source.
+    """
+    surface, wanted = {}, {}
+    for name, text in _all_js():
+        made = re.search(r"^J\.(\w+)\s*=\s*\(function", text, re.M)
+        if made:
+            # The literal the IIFE itself returns, which is the one at the outer indent.
+            # Not the last "return {" in the file: several of these modules return object
+            # literals from inside their own functions, further down.
+            opens = re.search(r"^  return \{", text, re.M)
+            if opens:
+                surface[made.group(1)] = _members_of_literal(text, opens.end() - 1)
+        for module, member in re.findall(r"\bJ\.(\w+)\.(\w+)\s*\(", text):
+            wanted.setdefault(module, {}).setdefault(member, set()).add(name)
+
+    # A parser that quietly read nothing would make this pass forever, so say out loud
+    # how much of the app it managed to read.
+    read = sorted(m for m, names in surface.items() if names)
+    assert len(read) >= 8, "only read the surface of %s, so this proves little" % read
+    assert "audio" in read, "the module this was written for was not read"
+
+    missing = {}
+    for module, members in wanted.items():
+        if module not in surface or not surface[module]:
+            continue                        # not one of these modules, or not readable
+        for member, files in members.items():
+            if member not in surface[module]:
+                missing["J.%s.%s" % (module, member)] = sorted(files)
+    assert not missing, "called but not there: %s" % missing

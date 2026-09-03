@@ -49,6 +49,12 @@ J.views.song = {
     J.songCtx = ctx;
 
     root.innerHTML = `
+      <!-- The whole panel's ground, not just the header's. It is the song's own artwork,
+           enormous and far out of focus, sitting behind everything on the page and
+           moving slower than the content does. -->
+      <div class="song-wash ${cover ? "" : "flat"}" id="songWash"
+           style="${cover ? `background-image:url('${J.esc(cover)}')` : `--hue:${J.hue(song.title)}`}"></div>
+
       <div class="hero">
         <div class="hero-art ${cover ? "" : "flat"}" id="heroArt"
              style="${cover ? `background-image:url('${J.esc(cover)}')` : `--hue:${J.hue(song.title)}`}"></div>

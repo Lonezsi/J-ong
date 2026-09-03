@@ -44,6 +44,18 @@ J.player = (function () {
     J.audio.setVolume(state.volume);
   }
 
+  /* Where a playable thing's audio lives.
+   *
+   * A version of a song and a loose render in the Renders list are both just bytes with
+   * a URL, and the player has no reason to care which it is holding. The kind is kept so
+   * the few places that genuinely differ, writing a corrected duration back for one and
+   * not the other, can ask. */
+  const srcFor = (item) => (item.kind === "render"
+    ? `/api/renders/${item.id}/audio`
+    : `/api/versions/${item.id}/audio`);
+  //: A render id and a version id are both small integers, so the deck remembers which.
+  const keyFor = (item) => `${item.kind || "version"}:${item.id}`;
+
   async function loadVersion(slot, version) {
     state.slots[slot].version = version || null;
     const deck = J.audio.deck(slot);
@@ -53,9 +65,9 @@ J.player = (function () {
       deck.versionId = null;
       return;
     }
-    if (deck.versionId !== version.id) {
-      deck.versionId = version.id;
-      deck.element.src = `/api/versions/${version.id}/audio`;
+    if (deck.versionId !== keyFor(version)) {
+      deck.versionId = keyFor(version);
+      deck.element.src = srcFor(version);
       deck.element.load();
     }
   }
@@ -188,7 +200,10 @@ J.player = (function () {
         ${J.cover({ url: art, title: state.song.title })}
         <div class="truncate">
           <div class="t truncate"><a href="#/song/${state.song.id}" data-link>${J.esc(state.song.title)}</a></div>
-          <div class="s truncate">${version ? `v${version.n}` : "no version"}${
+          <div class="s truncate">${
+            !version ? "no version"
+              : version.kind === "render" ? "a render, not yet on a song"
+              : `v${version.n}`}${
             slot.preset ? ` &middot; ${J.esc(slot.preset.name)}` : ""}</div>
         </div>
       </div>
@@ -304,6 +319,49 @@ J.player = (function () {
       }
     },
 
+    /* Play something that is not on a song yet.
+     *
+     * A render in the list has no versions, no presets and no arrangement, so this is
+     * the plain path: one file, the transport, and the bar showing what it is. It is
+     * also what a playlist uses when the next thing in it is a loose render. */
+    async playRender(entry, queue) {
+      const item = { id: entry.id, kind: "render", duration: entry.duration || 0 };
+      const asSong = { id: `render:${entry.id}`, kind: "render",
+                       title: entry.name || entry.filename || "render" };
+      const before = { song: state.song, playing: state.playing };
+
+      state.song = asSong;
+      state.active = "A";
+      state.playing = true;
+      state.slots.A = { version: item, preset: null };
+      state.slots.B = { version: null, preset: null };
+      state.presets = [];
+      if (queue) { state.queue = queue; state.index = queue.findIndex((q) => q.id === entry.id); }
+      render();
+      startTicking();
+      J.emit("player:change");
+
+      try {
+        await ensureContext();
+        if (state.song !== asSong) return;
+        await loadVersion("B", null);
+        await loadVersion("A", item);
+        J.audio.applyTo("A", null);          // a loose render is heard as it is
+        applyGains();
+        await startBoth();
+        if (state.song !== asSong) return;
+        render();
+        J.emit("player:change");
+      } catch (e) {
+        if (state.song !== asSong) return;
+        state.song = before.song;
+        state.playing = before.playing;
+        stopTicking();
+        render();
+        J.toast(e.message || "That render would not play.", "bad");
+      }
+    },
+
     /* Start fetching a render before anyone asks for it.
      *
      * Handing the file to the element is what actually costs: the browser will not begin
@@ -316,10 +374,10 @@ J.player = (function () {
     prime(version) {
       if (!version || state.playing) return;
       const deck = J.audio.deck("A");
-      if (!deck || deck.versionId === version.id) return;
-      if (state.slots.A.version && state.slots.A.version.id === version.id) return;
-      deck.versionId = version.id;
-      deck.element.src = `/api/versions/${version.id}/audio`;
+      if (!deck || deck.versionId === keyFor(version)) return;
+      if (state.slots.A.version && keyFor(state.slots.A.version) === keyFor(version)) return;
+      deck.versionId = keyFor(version);
+      deck.element.src = srcFor(version);
       deck.element.load();
     },
 
@@ -469,8 +527,12 @@ J.player = (function () {
           run: () => api.toggle() },
         { divider: true },
         { label: "Back to the start", icon: "open", run: () => api.seek(0) },
-        version ? { label: `Download v${version.n}`, icon: "down",
-          run: () => window.open(`/api/versions/${version.id}/download`, "_blank") } : null,
+        version ? { label: version.kind === "render" ? "Download this render"
+                                                      : `Download v${version.n}`,
+          icon: "down",
+          run: () => window.open(version.kind === "render"
+            ? `/api/renders/${version.id}/audio`
+            : `/api/versions/${version.id}/download`, "_blank") } : null,
         { divider: true },
         { label: "Stop and clear the player", icon: "drop",
           run: () => {
@@ -545,7 +607,8 @@ J.player = (function () {
       /* The server cannot always work out a duration, so the browser tells it once. */
       audio.addEventListener("loadedmetadata", async () => {
         const version = state.slots[slot].version;
-        if (!version || !Number.isFinite(audio.duration)) return;
+        if (!version || version.kind === "render") return;   // nothing to correct on
+        if (!Number.isFinite(audio.duration)) return;
         if (Math.abs((version.duration || 0) - audio.duration) < 0.6) return;
         version.duration = audio.duration;
         await J.try(() => J.patch(`/api/versions/${version.id}`, { duration: audio.duration }));

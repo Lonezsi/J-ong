@@ -234,7 +234,9 @@ J.eq = (function () {
     }
 
     function commit() {
-      J.audio.apply(data);
+      // Only tell whoever opened the editor. It knows which deck, if any, is playing
+      // this preset; the editor does not, and the one it used to reach for stopped
+      // existing when A and B became two chains rather than one.
       onChange(data);
     }
 

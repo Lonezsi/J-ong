@@ -102,9 +102,16 @@ def test_a_body_too_large_to_swallow_closes_the_connection_instead(server, tmp_p
             c.request("POST", "/api/renders", body=f.read(),
                       headers={"Content-Type": "application/octet-stream",
                                "X-Filename": "notes.txt"})
-        response = c.getresponse()
-        response.read()
-        assert response.status == 400, "a text file was accepted as a render"
+        try:
+            response = c.getresponse()
+            response.read()
+            assert response.status == 400, "a text file was accepted as a render"
+        except (ConnectionAbortedError, ConnectionResetError,
+                http.client.RemoteDisconnected):
+            # Closing is the point, and on Windows the close can reach the client before
+            # the refusal does. What is promised is that the upload is refused and the
+            # next connection is clean, not that a client still writing gets to read why.
+            pass
     finally:
         c.close()
 

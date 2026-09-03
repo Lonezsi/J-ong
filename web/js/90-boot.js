@@ -79,6 +79,7 @@ async function buildRail(state) {
 
   refreshRenderBadge();
   await refreshRailAlbums(state);
+  await refreshRailPlaylists(state);
 }
 
 /* How many renders are still waiting to be told what they are. Read from the server
@@ -92,6 +93,31 @@ async function refreshRenderBadge() {
     badge.hidden = !data.waiting;
   } catch (e) {
     badge.hidden = true;
+  }
+}
+
+/* Playlists of your own in the rail. An album's own is reached through the album, which
+ * is where the songs in it are decided, so listing it separately would be two doors to
+ * one room. */
+async function refreshRailPlaylists(state) {
+  const holder = J.$("#railPlaylists");
+  if (!holder) return;
+  if (!state.modules.includes("playlists")) { holder.innerHTML = ""; return; }
+  try {
+    const data = await J.get("/api/playlists");
+    const mine = (data.playlists || []).filter((p) => !p.album_id);
+    holder.innerHTML = mine.length
+      ? `<div class="eyebrow">Playlists</div>` + mine.map((p) => `
+          <a class="rail-album" href="#/playlist/${p.id}" data-link>
+            ${J.cover({ title: p.title, className: "cover" })}
+            <span class="truncate">
+              <span class="t truncate">${J.esc(p.title)}</span>
+              <span class="s truncate">${p.count} item${p.count === 1 ? "" : "s"}</span>
+            </span>
+          </a>`).join("")
+      : "";
+  } catch (e) {
+    holder.innerHTML = "";
   }
 }
 
@@ -263,6 +289,7 @@ async function boot() {
   }
 
   J.on("albums:changed", () => refreshRailAlbums(J.state));
+  J.on("playlists:changed", () => refreshRailPlaylists(J.state));
   J.on("renders:changed", refreshRenderBadge);
   J.on("settings:changed", async () => {
     const fresh = await J.get("/api/state");

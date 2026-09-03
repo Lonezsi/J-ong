@@ -68,12 +68,30 @@ def list_albums(req):
 
 def get_album(req):
     album = get(req.params["id"])
+    # Albums that existed before playlists did get theirs the first time they are
+    # opened, which is cheaper and safer than a migration that rewrites every row.
+    pl = _playlists()
+    if pl:
+        pl.for_album(album["id"], album["title"])
     album.update(_counts(album["id"]))
     album["has_cover"] = bool(album["cover_digest"])
     rows = db.query(
         "SELECT s.*, a.position FROM album_songs a JOIN songs s ON s.id = a.song_id "
         "WHERE a.album_id = ? ORDER BY a.position, s.title COLLATE NOCASE", (album["id"],))
     return {"album": album, "songs": songs.decorate(rows)}
+
+
+def _playlists():
+    """The playlists module, if it is switched on.
+
+    Asked for rather than imported at the top, because an album has to keep working in a
+    library where playlists are turned off. Everything below is a no op in that case.
+    """
+    from .. import registry
+    if not registry.has("playlists"):
+        return None
+    from . import playlists
+    return playlists
 
 
 def create_album(req):
@@ -85,6 +103,10 @@ def create_album(req):
         "title": title,
         "year": as_int(year, "year") if year not in (None, "") else None,
         "notes": data.get("notes", ""), "created_at": now, "updated_at": now})
+    # Every album is also a running order, made with it rather than asked for later.
+    pl = _playlists()
+    if pl:
+        pl.for_album(album_id, title)
     return {"album": get(album_id)}
 
 
@@ -121,6 +143,9 @@ def add_song(req):
     db.run("INSERT INTO album_songs (album_id, song_id, position) VALUES (?, ?, ?)",
            (album["id"], song["id"], (row["p"] if row and row["p"] is not None else -1) + 1))
     db.update("albums", album["id"], {"updated_at": time.time()})
+    pl = _playlists()
+    if pl:
+        pl.album_gained_song(album["id"], song["id"])
     return {"album_id": album["id"], "song_id": song["id"], "added": True}
 
 
@@ -128,6 +153,9 @@ def remove_song(req):
     album = get(req.params["id"])
     db.run("DELETE FROM album_songs WHERE album_id = ? AND song_id = ?",
            (album["id"], req.params["song_id"]))
+    pl = _playlists()
+    if pl:
+        pl.album_lost_song(album["id"], req.params["song_id"])
     return {"removed": req.params["song_id"]}
 
 
