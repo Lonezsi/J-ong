@@ -19,9 +19,7 @@ html, body {
 }
 
 body {
-  /* Fixed, so the pool of light stays where it is while the content moves through it.
-     A background that scrolls away turns into a visible seam halfway down a long page. */
-  background: var(--grad-app) fixed var(--bg-deep);
+  background: var(--bg);
   color: var(--text);
   font-family: var(--font);
   font-size: 14px;
@@ -189,3 +187,15 @@ button, input, textarea, select { font: inherit; color: inherit; }
   border-radius: var(--r-sm);
 }
 .btn:focus-visible, .icon-btn:focus-visible, .pill:focus-visible { outline-offset: 3px; }
+
+/* ── glass ────────────────────────────────────────────────────────────────
+
+   Applied directly on the four surfaces that have the page moving behind them: the
+   rail, the bar across the top, the player and dialogs. Not offered as a utility class,
+   because glass is not a decoration to sprinkle: it means something only where content
+   passes underneath, and everywhere else it is a grey box that costs a compositor layer.
+
+   Where the filter cannot be had at all, those surfaces fall back to solid. */
+@supports not (backdrop-filter: blur(1px)) {
+  .rail, .topbar, .player, .sheet, .slot-menu { background: var(--surface); }
+}

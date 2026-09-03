@@ -1,97 +1,99 @@
 /* Tokens.
 
-   Somewhere between a chat app and a music app: the calm surfaces and generous spacing
-   of one, the dark ground and green of the other.
+   Black, and glass on top of it.
 
-   The ground is nearly black now, and deliberately not pure black. Pure black against a
-   bright accent is harsh at night and shows every bit of banding on an OLED panel; a few
-   points of green in the darkest neutrals give the accent somewhere to belong and keep
-   the large flat areas from looking like a hole in the screen.
+   The ground is actually black, not a very dark grey and not a gradient. Nothing is
+   shaded and nothing fades into anything: every surface is one flat value. What
+   separates one plane from another is not a change of colour, it is that the near plane
+   is translucent and bends what is behind it.
 
-   Light in this room comes from above. Every raised surface is a gradient a shade lighter
-   at its top edge than its bottom, which is what makes a card read as a card without a
-   hard border around it, and it is why there are so few hard borders here.
+   That bending is real. The chrome carries an SVG displacement filter, so content
+   scrolling under the rail or the player is pushed sideways as it passes and a straight
+   edge crossing behind a panel visibly bows. A blur on its own reads as frosted plastic,
+   because blurring is what distance does, not what glass does. Refraction is the thing
+   the eye actually recognises.
 
-   Plant green rather than the usual signal green: enough life to mark what is playing,
-   not so much that it glows. */
+   Glass only says anything when there is something behind it, which is why the chrome is
+   glass and the content is not. A translucent card floating on a black page over nothing
+   is a grey card with extra steps.
+
+   Plant green stays. It is the one colour in the room and it belongs to whatever is
+   playing. */
 
 :root {
   /* ── the ground ─────────────────────────────────────────────────────────── */
-  --bg:          #070907;
-  --bg-deep:     #030403;
-  --bg-high:     #0B0F0C;      /* the top of the page, where the light falls */
+  --bg:          #000000;
+  --bg-deep:     #000000;
+  --bg-high:     #000000;
 
-  --surface:     #0E120F;
-  --surface-2:   #141A16;
-  --elevated:    #1B231E;
-  --hover:       rgba(255, 255, 255, 0.05);
-  --pressed:     rgba(255, 255, 255, 0.09);
+  /* Solid planes, for the few things that must not be seen through. */
+  --surface:     #0B0B0C;
+  --surface-2:   #121214;
+  --elevated:    #1A1A1D;
+  --hover:       rgba(255, 255, 255, 0.06);
+  --pressed:     rgba(255, 255, 255, 0.11);
 
-  --line:        rgba(255, 255, 255, 0.06);
-  --line-2:      rgba(255, 255, 255, 0.12);
+  --line:        rgba(255, 255, 255, 0.09);
+  --line-2:      rgba(255, 255, 255, 0.16);
 
-  --text:        #E9EFEA;
-  --text-2:      #98A69E;
-  --text-3:      #66736C;
-  --text-on-accent: #04120A;
+  --text:        #F2F3F4;
+  --text-2:      #9EA1A6;
+  --text-3:      #6B6E74;
+  --text-on-accent: #05130B;
 
   --accent:      #54B37A;
   --accent-hi:   #74D398;
   --accent-lo:   #38835A;
-  --accent-soft: rgba(84, 179, 122, 0.13);
-  --accent-line: rgba(84, 179, 122, 0.38);
+  --accent-soft: rgba(84, 179, 122, 0.16);
+  --accent-line: rgba(84, 179, 122, 0.42);
 
   --warn:        #D9A441;
   --bad:         #D4685E;
   --bad-hi:      #F0A79E;
-  /* Type that sits on a saturated block rather than on the room's ground. */
   --text-on-color: #FFFFFF;
 
-  /* ── gradients ──────────────────────────────────────────────────────────── */
+  /* ── glass ──────────────────────────────────────────────────────────────── */
 
-  /* The page itself. A single soft pool of light behind the top of the content, so
-     scrolling feels like moving through a room rather than down a flat sheet. */
-  --grad-app:
-    radial-gradient(1100px 620px at 22% -12%, rgba(84, 179, 122, 0.10), transparent 62%),
-    radial-gradient(900px 520px at 92% 4%, rgba(84, 179, 122, 0.05), transparent 58%),
-    linear-gradient(180deg, var(--bg-high) 0%, var(--bg) 42%, var(--bg-deep) 100%);
+  /* The tint. Barely a colour: a pane is mostly whatever is behind it, lifted just
+     enough that type has something to sit on. */
+  --glass:       rgba(255, 255, 255, 0.055);
+  --glass-2:     rgba(255, 255, 255, 0.085);
+  --glass-line:  rgba(255, 255, 255, 0.13);
 
-  /* Raised things. Barely there on purpose: the difference between the two stops is
-     about two percent of lightness, which the eye reads as a lit edge and not as a
-     gradient at all. */
-  --grad-surface:  linear-gradient(180deg, #12181400 0%, #00000038 100%),
-                   linear-gradient(180deg, #171E1A 0%, #0F1411 100%);
-  --grad-raised:   linear-gradient(180deg, #1E2721 0%, #151B17 100%);
-  --grad-raised-hi: linear-gradient(180deg, #27332B 0%, #1C251F 100%);
-  --grad-sunken:   linear-gradient(180deg, #05070600 0%, #00000040 100%),
-                   linear-gradient(180deg, #090D0A 0%, #060907 100%);
+  /* Distort, then blur, then lift. The order matters: displacing an image that has
+     already been blurred bends a smudge, which looks like nothing at all. */
+  --glass-filter:      url(#glass) blur(22px) saturate(180%) brightness(1.06);
+  --glass-filter-thin: url(#glass-thin) blur(14px) saturate(170%) brightness(1.05);
 
-  /* The player. Angled rather than straight down, and barely there: about one and a
-     half percent of lightness across the whole bar. Enough that the eye reads it as a
-     surface catching light from the corner of the room rather than as a painted panel,
-     and not enough to notice as a gradient. */
-  --grad-player: linear-gradient(104deg,
-    #151C18 0%, #121815 38%, #0E1310 72%, #0C100D 100%);
+  /* The lit top edge every real pane has, and the shadow it sits in. */
+  --edge-top: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
 
-  /* The accent, with the light coming from the same place as everywhere else. */
-  --grad-accent:   linear-gradient(180deg, #64C68A 0%, #47A26B 100%);
-  --grad-accent-hi: linear-gradient(180deg, #7ADCA0 0%, #54B37A 100%);
+  /* ── gradients, off ─────────────────────────────────────────────────────────
 
-  /* A hairline that fades out towards the bottom, for the top edge of a raised thing. */
-  --edge-top: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+     These names are spent all over the stylesheets. Rather than chase every one, they
+     are flat values now, so "the gradients are off" is true at the single place that
+     decides it and cannot quietly come back on somewhere else. */
+  --grad-app:       none;
+  --grad-surface:   var(--surface);
+  --grad-raised:    var(--elevated);
+  --grad-raised-hi: #232327;
+  --grad-sunken:    #08080A;
+  --grad-player:    var(--surface);
+  --grad-accent:    var(--accent);
+  --grad-accent-hi: var(--accent-hi);
 
   --font:  "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   /* "Jong Display" is whatever font has been uploaded in Settings, registered at runtime.
-     Orbitron is the openly licensed stand in until one is: geometric and technical, the
-     nearest thing to the face this library was designed around that can ship in a repo. */
+     Orbitron is the openly licensed stand in until one is. */
   --display: "Jong Display", "Orbitron", "Manrope", ui-sans-serif, system-ui, sans-serif;
 
-  /* Round, and unapologetic about it. */
+  /* Rounder than before. Glass with tight corners looks like a cut tile. */
   --r-pill: 999px;
-  --r-xl:  20px;
-  --r-lg:  16px;
-  --r-md:  12px;
-  --r-sm:  8px;
+  --r-xl:  24px;
+  --r-lg:  18px;
+  --r-md:  13px;
+  --r-sm:  9px;
 
   --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
   --s5: 20px; --s6: 28px; --s7: 40px; --s8: 56px;
@@ -99,15 +101,12 @@
   --rail-w: 244px;
   --player-h: 84px;
 
-  /* Deeper than before, because the ground is darker and a shadow that worked against
-     #0F1311 disappears entirely against #070907. */
-  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.55);
-  --shadow-3: 0 24px 70px rgba(0, 0, 0, 0.7);
-  --glow:     0 0 0 1px var(--accent-line), 0 8px 30px rgba(84, 179, 122, 0.18);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.6);
+  --shadow-3: 0 24px 70px rgba(0, 0, 0, 0.75);
+  --glow:     0 0 0 1px var(--accent-line), 0 8px 30px rgba(84, 179, 122, 0.2);
 
   --ease: cubic-bezier(0.22, 0.7, 0.3, 1);
-  /* A little slower than a click, so movement is felt rather than noticed. */
   --fast: 130ms var(--ease);
   --med:  220ms var(--ease);
   --slow: 420ms var(--ease);
@@ -117,3 +116,6 @@
   :root { --fast: 1ms linear; --med: 1ms linear; --slow: 1ms linear; }
   * { animation-duration: 1ms !important; scroll-behavior: auto !important; }
 }
+
+/* The filter definitions carry no picture of their own. */
+.glass-defs { position: absolute; width: 0; height: 0; pointer-events: none; }

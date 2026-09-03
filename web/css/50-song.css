@@ -40,8 +40,8 @@
    * across the page. Veiling that line meant painting the bottom of the header a solid
    * colour and hoping it matched the ground below, which it stopped doing the moment
    * the ground became a gradient. Fading the art itself needs no such luck. */
-  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 52%, transparent 97%);
-  mask-image: linear-gradient(180deg, #000 0%, #000 52%, transparent 97%);
+  -webkit-mask-image: linear-gradient(180deg, black 0%, black 52%, transparent 97%);
+  mask-image: linear-gradient(180deg, black 0%, black 52%, transparent 97%);
 }
 .hero-art.flat {
   /* No artwork yet: a wash built from the title, so the page still has a temperature. */
@@ -251,10 +251,13 @@
 .slot-menu {
   position: fixed; z-index: 80;
   min-width: 260px; max-height: 320px; overflow-y: auto;
-  background: var(--elevated);
-  border: 1px solid var(--line-2);
+  background: var(--glass-2);
+  -webkit-backdrop-filter: var(--glass-filter-thin);
+  backdrop-filter: var(--glass-filter-thin);
+  border: 1px solid var(--glass-line);
   border-radius: var(--r-md);
-  box-shadow: var(--shadow-3);
+  box-shadow: var(--shadow-3), var(--edge-top);
+  isolation: isolate;
   padding: var(--s2);
   animation: pop 140ms var(--ease);
   cursor: default;

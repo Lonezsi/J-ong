@@ -443,3 +443,27 @@ def test_every_control_a_menu_reaches_for_actually_exists():
 
     missing = {act: sorted(files) for act, files in reached.items() if act not in declared}
     assert not missing, "menus reaching for controls that do not exist: %s" % missing
+
+
+def test_no_stylesheet_has_an_unbalanced_brace():
+    """One stray brace takes every rule after it with it.
+
+    An edit left a single orphan } at the end of 10-base.css. The browser stopped
+    parsing there, so every stylesheet concatenated after it was discarded: the shell
+    lost its grid and the whole app fell into one stacked column. Nothing looked like a
+    CSS syntax error, it looked like the layout had been rewritten.
+
+    Counted rather than parsed, because the failure is always a count.
+    """
+    broken = {}
+    for name in sorted(os.listdir(CSS_DIR)):
+        if not name.endswith(".css"):
+            continue
+        with open(os.path.join(CSS_DIR, name), encoding="utf-8") as f:
+            text = f.read()
+        # Braces inside comments and strings would confuse this; there are none, and a
+        # test that quietly stops counting is worse than one that is slightly strict.
+        opened, closed = text.count("{"), text.count("}")
+        if opened != closed:
+            broken[name] = "%d open, %d closed" % (opened, closed)
+    assert not broken, "stylesheets that will stop the parser: %s" % broken

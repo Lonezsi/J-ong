@@ -3,9 +3,12 @@
 .player {
   grid-area: player;
   height: var(--player-h);
-  background: var(--grad-player);
-  border: 1px solid var(--line);
-  box-shadow: var(--edge-top), var(--shadow-2);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--edge-top), var(--glass-shadow);
+  isolation: isolate;
   border-radius: var(--r-lg);
   padding: 0 var(--s5);
   display: grid;

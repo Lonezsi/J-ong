@@ -17,9 +17,12 @@
 }
 /* No artwork yet: a calm two tone built from the title, so a library with nothing
    uploaded still looks like a shelf rather than a row of empty boxes. */
+/* Tinted graphite rather than colour.
+   The room is black and green now, and a magenta album cover was the one thing in it
+   shouting. The hue still comes from the title, so covers stay tellable apart, but at a
+   saturation that belongs on this page. */
 .cover[data-hue] {
-  background-image: linear-gradient(150deg,
-    hsl(var(--hue) 30% 26%), hsl(calc(var(--hue) + 34) 24% 11%));
+  background-color: hsl(var(--hue) 12% 15%);
 }
 /* A lit top edge, the same as every other raised thing on the page. */
 .cover { box-shadow: var(--edge-top); }

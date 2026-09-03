@@ -4,9 +4,7 @@
   position: fixed; inset: 0; z-index: 60;
   /* Darker and blurred, because the ground behind is now nearly black: a flat 60% veil
      over it barely separated the dialog from the page at all. */
-  background: rgba(0, 0, 0, 0.66);
-  -webkit-backdrop-filter: blur(6px) saturate(120%);
-  backdrop-filter: blur(6px) saturate(120%);
+  background: rgba(0, 0, 0, 0.55);
   display: grid; place-items: center;
   padding: var(--s4);
   animation: fade-in 160ms var(--ease);
@@ -17,10 +15,13 @@
   width: min(520px, 100%);
   max-height: 84dvh;
   overflow-y: auto;
-  background: var(--grad-raised);
-  border: 1px solid var(--line-2);
+  background: var(--glass-2);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  border: 1px solid var(--glass-line);
   border-radius: var(--r-xl);
   box-shadow: var(--shadow-3), var(--edge-top);
+  isolation: isolate;
   padding: var(--s6);
   animation: sheet-in 240ms var(--ease);
 }
