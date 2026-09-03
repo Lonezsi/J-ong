@@ -53,12 +53,10 @@ versions later you still know what is actually online.
 
 ```
 cd client
-python jong_client.py server http://127.0.0.1:7900
-python jong_client.py add "C:\Users\you\Music\Renders"
+python jong_client.py install --server http://127.0.0.1:7900 --folder "C:\Users\you\Music\Renders"
 python jong_client.py scan      # what is new, without sending anything
 python jong_client.py push      # send it
 python jong_client.py watch     # keep doing that
-python jong_client.py install   # run watch at logon
 ```
 
 It reads those folders and never writes to them. When it finds something new it asks the
@@ -84,7 +82,7 @@ whichever song they belong to.
 
 ```
 cd client
-python jong_client.py install
+python jong_client.py install --server http://127.0.0.1:7900 --folder "C:\Users\you\Music\Renders"
 ```
 
 That does three things, none of which needs an administrator:
@@ -92,6 +90,13 @@ That does three things, none of which needs an administrator:
 - the folder watcher runs at logon
 - a **right click menu** appears on audio files, on `.flp` projects, and on folders
 - a daily task pulls a newer J-ong from GitHub at 05:00
+
+You can also run it without the flags if you have already set the server and folders:
+
+```
+cd client
+python jong_client.py install
+```
 
 The right click entries are:
 

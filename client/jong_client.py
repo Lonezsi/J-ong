@@ -423,7 +423,35 @@ def cmd_install(cfg, server, args):
 
     Everything lands under the current user: a per user scheduled task and HKCU registry
     keys. Nothing is written to the machine wide hive, so removing it is complete.
+
+    --server and --folder can be passed to set up in one line:
+      python jong_client.py install --server http://127.0.0.1:7900 --folder "~/Renders"
     """
+    # Apply any setup flags before installing.
+    if args.server:
+        cfg["server"] = args.server.rstrip("/")
+        save_config(cfg)
+        print("Server: %s" % cfg["server"])
+    if args.folder:
+        added = False
+        for raw in args.folder:
+            path = os.path.abspath(os.path.expanduser(raw))
+            if not os.path.isdir(path):
+                print("  (missing) %s" % path)
+                continue
+            if path not in cfg["folders"]:
+                cfg["folders"].append(path)
+                added = True
+            print("  watching %s" % path)
+        if added:
+            save_config(cfg)
+
+    if not cfg["folders"]:
+        print("No folders to watch. Add one with: --folder <path>")
+        return 1
+
+    server = Server(cfg["server"])
+
     script = os.path.abspath(__file__)
     quoted = '"%s" "%s"' % (sys.executable, script)
 
@@ -490,7 +518,9 @@ def main(argv=None):
     where = sub.add_parser("server", help="set the J-ong address")
     where.add_argument("url")
     sub.add_parser("update", help="pull a newer J-ong from GitHub")
-    sub.add_parser("install", help="run watch at logon, and add the right click menu")
+    install = sub.add_parser("install", help="run watch at logon, and add the right click menu")
+    install.add_argument("--server", help="set the J-ong server address")
+    install.add_argument("--folder", action="append", help="watch a folder (repeatable)")
     one = sub.add_parser("push-file", help="send one file, used by the right click menu")
     one.add_argument("path")
     one.add_argument("-y", "--yes", action="store_true")
