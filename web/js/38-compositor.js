@@ -197,9 +197,16 @@ J.compositor = (function () {
         window.removeEventListener("pointerup", onUp);
         const node = J.$(`[data-clip="${clipId}"]`, root);
         if (node) node.classList.remove("holding");
+        const wasTrim = !!(dragging && dragging.edge);
         if (dragging && !dragging.moved) select(clipId);
         dragging = null;
-        draw();
+        /* A trim has already been drawn, one width at a time, all the way through the
+         * gesture. Rebuilding the whole panel again at the end throws away ten canvases
+         * and paints ten more for a picture that is already correct, which is a visible
+         * hitch on the frame you let go. A move reorders the track, so that one does
+         * need the rebuild. */
+        if (wasTrim) redrawSizes();
+        else draw();
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);

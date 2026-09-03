@@ -376,3 +376,26 @@ def test_a_page_revalidates_instead_of_being_held_for_a_day(server):
                 assert False, "%s did not answer 304 to a matching tag" % path
         except urllib.error.HTTPError as e:
             assert e.code == 304, "%s answered %d to a matching tag" % (path, e.code)
+
+
+def test_editing_an_arrangement_does_not_reschedule_the_audio_on_every_move():
+    """Trimming a clip while it plays used to tear down every scheduled source and build
+    ten new ones on each pointermove: about seven hundred buffer sources over one drag,
+    a three quarter second stall, and audio that restarted continuously while you were
+    trying to listen to the edit.
+
+    Every edit therefore goes through resync(), which coalesces, rather than calling
+    seek() straight through to the scheduler.
+    """
+    with open(os.path.join(JS_DIR, "22-arrange.js"), encoding="utf-8") as f:
+        arrange = f.read()
+
+    assert "resync()" in arrange, "the coalescing reschedule is gone"
+    # The editing methods are the ones that must not reschedule immediately.
+    for name in ("move", "duplicate", "remove", "resize", "setTempo", "setOffset"):
+        body = re.split(r"\n    %s\(" % name, arrange, maxsplit=1)
+        assert len(body) == 2, "%s is no longer an editing method here" % name
+        # Up to the next method at the same indentation.
+        chunk = re.split(r"\n    \w+\(", body[1], maxsplit=1)[0]
+        assert "api.seek(" not in chunk, (
+            "%s reschedules straight away; a drag calls it once per frame" % name)

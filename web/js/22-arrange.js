@@ -44,6 +44,7 @@ J.arrange = (function () {
   let startedFrom = 0;              // timeline seconds at that moment
   let running = false;
   let saveTimer = null;
+  let resyncTimer = null;   // coalesces the reschedule an edit needs
   let watching = null;          // the interval that announces section changes
   let sounding = null;          // the section last announced
 
@@ -202,6 +203,25 @@ J.arrange = (function () {
     },
 
 
+    /* Put the running audio back in step with an arrangement that has just changed.
+     *
+     * Not immediately, and not once per pointermove. Rescheduling tears down every
+     * source and builds ten new ones, which took three quarters of a second in the
+     * middle of a drag and restarted the audio seventy times over the course of one
+     * trim: the timeline stuttered and the app felt broken at exactly the moment you
+     * were listening to the edit.
+     *
+     * So edits coalesce. The last one within a beat of quiet is the one that gets
+     * played, which is also the only one anybody meant. */
+    resync() {
+      if (!running) return;
+      if (resyncTimer) clearTimeout(resyncTimer);
+      resyncTimer = setTimeout(() => {
+        resyncTimer = null;
+        if (running) schedule(J.clamp(positionNow(), 0, Math.max(0, duration() - 0.01)));
+      }, 140);
+    },
+
     /* Written whole, and not on every pixel of a drag. */
     touch() {
       J.emit("arrange:change");
@@ -334,13 +354,13 @@ J.arrange = (function () {
     setTempo(bpm) {
       state.bpm = J.clamp(bpm, 20, 400);
       api.touch();
-      if (running) api.seek(positionNow());
+      api.resync();
     },
 
     setOffset(seconds) {
       state.offset = Math.max(-60, Math.min(600, seconds));
       api.touch();
-      if (running) api.seek(positionNow());
+      api.resync();
     },
 
     // ── editing ──────────────────────────────────────────────────────────────
@@ -350,7 +370,7 @@ J.arrange = (function () {
       const [clip] = state.clips.splice(from, 1);
       state.clips.splice(J.clamp(toIndex, 0, state.clips.length), 0, clip);
       api.touch();
-      if (running) api.seek(positionNow());
+      api.resync();
     },
 
     duplicate(clipId) {
@@ -361,14 +381,14 @@ J.arrange = (function () {
       });
       state.clips.splice(index + 1, 0, copy);
       api.touch();
-      if (running) api.seek(positionNow());
+      api.resync();
       return copy;
     },
 
     remove(clipId) {
       state.clips = state.clips.filter((c) => c.id !== clipId);
       api.touch();
-      if (running) api.seek(Math.min(positionNow(), duration()));
+      api.resync();
     },
 
     /* Trim a clip. `edge` is "start" or "end"; beats is the new whole number of beats. */
@@ -384,7 +404,7 @@ J.arrange = (function () {
       }
       clip.beats = wanted;
       api.touch();
-      if (running) api.seek(positionNow());
+      api.resync();
     },
 
     renamePart(partId, name) {
@@ -453,6 +473,7 @@ J.arrange = (function () {
 
     stop() {
       if (running) startedFrom = positionNow();
+      if (resyncTimer) { clearTimeout(resyncTimer); resyncTimer = null; }
       stopSources();
       running = false;
       if (sounding !== null) { sounding = null; J.emit("arrange:playing", { partId: null }); }
