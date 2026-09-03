@@ -21,7 +21,8 @@ J.trackRow = function (song, opts) {
     <div class="track ${playing ? "playing" : ""}" data-song="${song.id}" tabindex="0" role="button">
       <span class="lead">${lead}</span>
       <span class="truncate">
-        <span class="title truncate">${J.esc(song.title)}</span>
+        <a class="title truncate" href="#/song/${song.id}" data-link
+           title="Open ${J.esc(song.title)}">${J.esc(song.title)}</a>
         <span class="sub truncate">${J.esc(sub)}</span>
       </span>
       <span class="ver">${song.latest_version ? `v${song.latest_version}` : ""}</span>
@@ -29,7 +30,13 @@ J.trackRow = function (song, opts) {
     </div>`;
 };
 
-/* Clicking or keying a row plays it. Delegated once per view rather than per row. */
+/* Clicking a row plays it; clicking its title opens it.
+ *
+ * Playing was the only thing a row did, with the song page behind a double click. That
+ * is not a gesture anyone finds on purpose and it does not exist on a phone at all, so
+ * the page holding the lyrics, the sound and the arrangement had no way in from the
+ * list you reach it from. The title is a link now, and the row handler steps aside for
+ * links, which it already did. */
 J.wireTracks = function (root, songs) {
   const activate = (node) => {
     const song = songs.find((s) => String(s.id) === node.dataset.song);

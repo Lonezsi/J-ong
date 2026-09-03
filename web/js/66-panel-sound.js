@@ -165,7 +165,7 @@ J.blockSound = async function (panel, ctx) {
         <div class="band-bottom">
           <span class="gain">${J.eq.FLAT.has(band.type) ? "&mdash;"
             : (band.gain > 0 ? "+" : "") + band.gain.toFixed(1) + " dB"}</span>
-          <span class="q-knob" data-act="q" data-band="${band.id}" title="Drag for Q"
+          <span class="q-knob" data-band="${band.id}" title="Drag for Q"
                 role="slider" tabindex="0" aria-label="Q"
                 aria-valuenow="${band.q.toFixed(2)}">
             <svg viewBox="0 0 34 34" width="34" height="34">

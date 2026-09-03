@@ -399,3 +399,26 @@ def test_editing_an_arrangement_does_not_reschedule_the_audio_on_every_move():
         chunk = re.split(r"\n    \w+\(", body[1], maxsplit=1)[0]
         assert "api.seek(" not in chunk, (
             "%s reschedules straight away; a drag calls it once per frame" % name)
+
+
+def test_every_control_marked_with_an_action_has_one():
+    """A button wired to nothing is the worst kind of broken, because it looks fine.
+
+    The rail's close button and the hamburger both did this once: present, styled,
+    pressable, and connected to no code at all. data-act is how a control says what it
+    does, so every value that appears in markup has to be matched somewhere.
+    """
+    used, handled = {}, set()
+    for name, text in _all_js():
+        for act in re.findall(r'data-act="([a-z-]+)"', text):
+            used.setdefault(act, set()).add(name)
+        # The three shapes the handlers are written in.
+        handled.update(re.findall(r'dataset\.act === "([a-z-]+)"', text))
+        handled.update(re.findall(r'\bact === "([a-z-]+)"', text))
+        handled.update(re.findall(r'\bwhat === "([a-z-]+)"', text))
+        # Nothing here may match the markup itself: an earlier version did, so
+        # every action counted as handled simply by existing.
+        handled.update(re.findall(r'closest\([\'"]\[data-act=[\'"]([a-z-]+)', text))
+
+    dead = {act: sorted(files) for act, files in used.items() if act not in handled}
+    assert not dead, "controls that say they do something and do not: %s" % dead
