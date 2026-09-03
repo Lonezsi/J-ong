@@ -161,3 +161,59 @@ def test_a_second_server_cannot_take_a_port_that_is_already_served():
             "a second server bound port %d while the first was serving it" % port)
     finally:
         first.server_close()
+
+
+def test_a_connection_that_goes_quiet_does_not_hold_its_thread_forever(tmp_path):
+    """The thing that made the host look like it kept crashing.
+
+    Every kept alive connection holds a thread parked in a read. A browser opens several
+    per tab and hands none of them back while the tab is open, and one that dies without
+    saying so, which is what a phone going to sleep or a tunnel dropping looks like,
+    holds its thread for the life of the process. Nothing raises, nothing is logged, and
+    eventually the library stops answering for no visible reason.
+
+    Measured before the fix: forty idle connections took the server from eight threads to
+    forty eight, and it stayed there until the clients closed.
+
+    Run against a server of its own, with the wait turned down, so that proving a minute
+    long timeout does not cost a minute.
+    """
+    import socket
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    from jong.http import Handler
+
+    assert Handler.timeout, "an idle connection must eventually be closed"
+    assert Handler.timeout <= 300, "an idle connection held for minutes is the same bug"
+
+    class Impatient(Handler):
+        timeout = 1
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Impatient)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        c = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=20)
+        c.request("GET", "/api/health")
+        assert c.getresponse().read()
+
+        # Then say nothing. The server has to be the one to hang up.
+        c.sock.settimeout(15)
+        try:
+            left = c.sock.recv(1)
+        except socket.timeout:
+            raise AssertionError("the server held a connection that had gone quiet")
+        assert left == b"", "expected a close, got %r" % left
+        c.close()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_the_backlog_is_deeper_than_the_handful_the_stdlib_allows():
+    """Opening the library fires a page, a stylesheet, a script and a dozen calls at
+    once, several on new connections. A backlog of five overflows, and what overflows is
+    dropped rather than refused, so the caller waits until it gives up."""
+    from jong.http import Server
+
+    assert Server.request_queue_size >= 64,         "a backlog of %d is a handful of parallel requests" % Server.request_queue_size

@@ -52,7 +52,8 @@ CHUNK = 256 * 1024
 #: where other systems raise ConnectionResetError, which is why catching the other two
 #: was not enough: every seek in a long render printed a full stack trace, the noise
 #: buried real errors, and on the host that output goes through a pipe.
-GONE = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+GONE = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError,
+        TimeoutError)
 
 # Reachable without signing in: the door itself, the stylesheet it wears, and the calls
 # the door has to make. Everything else needs a session when the auth module is loaded.
@@ -171,6 +172,22 @@ class Body:
 class Handler(BaseHTTPRequestHandler):
     server_version = "J-ong"
     protocol_version = "HTTP/1.1"
+
+    #: How long a connection may sit saying nothing before it is closed.
+    #:
+    #: Without this a kept alive connection holds its thread in a read that never
+    #: returns. A browser opens several per tab and gives none of them back while the
+    #: tab is open, and one that dies without saying so, which is what a phone going to
+    #: sleep or a tunnel dropping looks like, holds its thread for the life of the
+    #: process. Measured: forty idle connections took the server from eight threads to
+    #: forty eight, and it stayed there.
+    #:
+    #: On a machine nobody is sitting at, that ends as a library that has stopped
+    #: answering for no reason anyone can see. Sixty seconds is roughly what a web
+    #: server in front of an application would use, and a browser reopens without
+    #: noticing. It is per read and per write, not per request, so a slow forty
+    #: megabyte render is unaffected.
+    timeout = 60
 
     def log_message(self, fmt, *args):
         pass  # the access log is noise for a single user tool
@@ -428,6 +445,14 @@ class Server(ThreadingHTTPServer):
     """
 
     daemon_threads = True
+
+    #: How many connections may be waiting to be accepted. The stdlib allows five.
+    #:
+    #: Opening the library fires a page, a stylesheet, a script and a dozen calls at
+    #: once, several of them on new connections, and a second device doing the same at
+    #: the same moment is enough to overflow a backlog of five. What overflows is not
+    #: refused politely; it is dropped, and the caller sits there until it gives up.
+    request_queue_size = 128
 
     #: On Windows this must be off, and the stdlib turns it on.
     #:
