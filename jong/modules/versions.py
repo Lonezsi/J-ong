@@ -168,7 +168,11 @@ def delete_version(req):
         db.update("songs", song["id"], {"current_version_id": newest["id"] if newest else None})
     # Only drop the bytes when no version anywhere still points at them.
     still = db.one("SELECT id FROM versions WHERE digest = ? LIMIT 1", (version["digest"],))
-    if not still and registry.has("renders"):
+    # The table, not the module. Renders can be switched off in config.MODULES with the
+    # rows still sitting there, and then deleting a version would take bytes that a
+    # render entry still points at, which is exactly the data the module being off is
+    # meant to be preserving.
+    if not still and db.table_exists("renders"):
         # A render sitting in the list plays from the same bytes. Deleting a version made
         # from it must not leave that entry pointing at nothing.
         still = db.one("SELECT id FROM renders WHERE digest = ? LIMIT 1",

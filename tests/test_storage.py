@@ -91,3 +91,63 @@ def test_an_unreadable_file_is_not_an_error(tmp_path):
 
 def test_a_missing_file_is_not_an_error():
     assert audio_meta.probe("no-such-file.wav")["duration"] == 0.0
+
+
+def test_two_uploads_at_once_do_not_write_into_the_same_temporary_file(tmp_path):
+    """The store is content addressed, so a wrong file under a right name is permanent.
+
+    put_stream names its temporary file after the process id. The server is a
+    ThreadingHTTPServer with daemon_threads on, so two uploads arriving together are two
+    threads in this function with one filename between them: they interleave their bytes
+    into one file while each hashes its own stream in memory. Both then rename that file
+    to their own digest, and whichever lands second wins.
+
+    Nothing raises. Both callers are told their upload succeeded. The bytes on disk are a
+    mixture of two songs, and because exists() only stats the path, that file shadows
+    every future correct upload of the same audio forever.
+    """
+    import hashlib
+    import io
+    import threading
+
+    from jong import blobs
+
+    class Slow(io.RawIOBase):
+        """A body that arrives in pieces, the way one off a socket does."""
+
+        def __init__(self, payload, gate):
+            self.rest = payload
+            self.gate = gate
+            self.first = True
+
+        def read(self, n=-1):
+            chunk = self.rest[:8192]
+            self.rest = self.rest[8192:]
+            if self.first:
+                self.first = False
+                self.gate.wait(timeout=5)      # both threads are now inside the write
+            return chunk
+
+    one = b"AAAA" * 60000
+    two = b"BBBB" * 60000
+    gate = threading.Barrier(2)
+    got = {}
+
+    def send(name, payload):
+        got[name] = blobs.put_stream(Slow(payload, gate), len(payload))
+
+    threads = [threading.Thread(target=send, args=("one", one)),
+               threading.Thread(target=send, args=("two", two))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=20)
+
+    assert len(got) == 2, "both uploads should have finished"
+    for name, payload in (("one", one), ("two", two)):
+        digest = got[name][0]
+        assert digest == hashlib.sha256(payload).hexdigest(), "the digest is of the stream"
+        stored = open(blobs.path_for(digest), "rb").read()
+        assert stored == payload, (
+            "%s was stored as %d bytes that hash to %s, not to its own name"
+            % (name, len(stored), hashlib.sha256(stored).hexdigest()[:12]))

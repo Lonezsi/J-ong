@@ -504,12 +504,25 @@ J.player = (function () {
       J.audio.setVolume(state.volume);
     },
 
+    /* Next and previous, for whichever kind of thing the queue holds.
+     *
+     * A queue used to be songs by assumption, and playing a loose render fills it with
+     * renders. Handing one of those to playSong reads its id as a song id: in a library
+     * where that number happens to be a song it plays something unrelated, and in one
+     * where it is not, Next silently does nothing. */
     step(delta) {
       if (!state.queue.length) return;
       const next = state.index + delta;
       if (next < 0 || next >= state.queue.length) return;
       state.index = next;
-      J.playSong(state.queue[next], state.queue);
+      const entry = state.queue[next];
+      /* A queue is all one kind, because it always comes from one list. The rows in it
+       * are whatever that list holds, and a render row off the API carries no kind of
+       * its own, so what is playing now is what says which kind this is. */
+      const renders = (entry && entry.kind === "render")
+        || (state.song && state.song.kind === "render");
+      if (renders) api.playRender(entry, state.queue);
+      else J.playSong(entry, state.queue);
     },
 
     render,

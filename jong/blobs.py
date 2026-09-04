@@ -12,6 +12,7 @@ that actually happens: the same file arriving more than once.
 import os
 import time
 import hashlib
+import tempfile
 import shutil
 
 from . import config
@@ -43,10 +44,20 @@ def put_bytes(data):
     if os.path.isfile(dest):
         return digest, False
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    tmp = dest + ".part"
-    with open(tmp, "wb") as f:
-        f.write(data)
-    os.replace(tmp, dest)
+    # Named per call for the same reason put_stream is: two callers storing the same
+    # bytes at the same moment would otherwise share one temporary file.
+    handle, tmp = tempfile.mkstemp(prefix=os.path.basename(dest) + ".",
+                                   suffix=".part", dir=os.path.dirname(dest))
+    try:
+        with os.fdopen(handle, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, dest)
+        tmp = None
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.remove(tmp)
     _forget_usage()
     return digest, True
 
@@ -56,13 +67,22 @@ def put_stream(stream, length):
 
     The bytes land in a temporary file first because the name cannot be known until the
     last byte has been read.
+
+    That temporary file gets a name of its own per call. It used to be named after the
+    process, which is one name for the whole server: two uploads arriving together are
+    two threads in here, and they wrote into the same file while each hashed its own
+    stream in memory. Both were then told they had succeeded, one digest ended up
+    pointing at the other song's bytes, and the other pointed at nothing at all, because
+    the first rename had already carried the file away. Nothing raised. In a store that
+    is addressed by content, a wrong file under a right name is permanent: exists() only
+    stats the path, so it shadows every correct upload of that audio ever after.
     """
     config.ensure_dirs()
-    tmp = os.path.join(config.BLOBS, "incoming.%d.part" % os.getpid())
+    handle, tmp = tempfile.mkstemp(prefix="incoming.", suffix=".part", dir=config.BLOBS)
     h = hashlib.sha256()
     size = 0
     try:
-        with open(tmp, "wb") as f:
+        with os.fdopen(handle, "wb") as f:
             remaining = length
             while remaining > 0:
                 chunk = stream.read(min(CHUNK, remaining))
@@ -72,6 +92,12 @@ def put_stream(stream, length):
                 size += len(chunk)
                 h.update(chunk)
                 f.write(chunk)
+            # On disk before it is given the name that promises what is in it. Without
+            # this a machine that loses power between the rename and the flush comes back
+            # with a truncated file under a valid digest, which is the same permanent
+            # shadow arrived at from the other direction.
+            f.flush()
+            os.fsync(f.fileno())
         digest = h.hexdigest()
         dest = path_for(digest)
         if os.path.isfile(dest):
