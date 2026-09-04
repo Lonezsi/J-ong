@@ -5,6 +5,7 @@ here were in the wiring: a route that does not exist, a header that is not read,
 one caller expects and another does not send.
 """
 import os
+import pytest
 
 
 def test_a_song_can_be_made_and_read_back(server):
@@ -157,3 +158,95 @@ def test_an_unknown_endpoint_says_so(server):
     status, answer = server.get("/api/not-a-thing")
     assert status == 404
     assert "path" in answer
+
+
+# ── health, durability and the module model ──────────────────────────────────
+
+def test_health_separates_being_alive_from_being_whole(server):
+    """The host force-kills this process whenever two health probes miss, so `ok` has to
+    stay a liveness answer. A module that failed to load is not something restarting
+    fixes, and reporting it as unhealthy would put an unattended machine into a kill loop
+    over a bad migration. It is reported beside `ok`, not instead of it."""
+    status, health = server.get("/api/health")
+    assert status == 200
+    assert health["ok"] is True
+    assert "uptime" in health
+    assert "degraded" not in health, "a healthy library should not be listing troubles"
+
+
+def test_health_says_so_when_a_module_did_not_load(server):
+    """Otherwise a library that lost a feature to a bad migration is indistinguishable
+    from a working one, and the only way to find out is to notice the feature is gone."""
+    from jong import registry
+
+    registry._failed["pretend"] = "Traceback: it did not"
+    try:
+        _, health = server.get("/api/health")
+        assert health["ok"] is True, "a failed module is not a reason to be restarted"
+        assert any("pretend" in line for line in health.get("degraded", [])), health
+    finally:
+        registry._failed.pop("pretend", None)
+
+
+def test_the_write_ahead_log_is_folded_back_in_rather_than_growing_forever(server):
+    """synchronous=NORMAL means a commit is not fsynced; what makes it durable is the
+    checkpoint, and nothing was checkpointing. The host's routine recovery is
+    Stop-Process -Force whenever two health probes miss, so a hard kill is the ordinary
+    way this server dies rather than the exceptional one.
+
+    A reader can still see an unflushed commit through the log, so what is actually
+    observable is the log itself: it should shrink when folded back in, and be emptied on
+    the way out. Both are what bounds the loss a kill can cost.
+    """
+    import os
+
+    from jong import config, db
+
+    for n in range(60):
+        server.post("/api/songs", {"title": "Row %d" % n})
+
+    wal = config.DB_PATH + "-wal"
+    assert os.path.exists(wal), "WAL mode is not on, so this test is measuring nothing"
+    grown = os.path.getsize(wal)
+    assert grown > 0, "nothing was written"
+
+    assert db.checkpoint() is True, "the log would not fold back in"
+    assert os.path.getsize(wal) <= grown, "checkpointing made the log bigger"
+
+    # And on the way out it is emptied rather than merely folded.
+    db.close()
+    assert os.path.getsize(wal) == 0 or not os.path.exists(wal),         "the log still held %d bytes after the database was closed" % os.path.getsize(wal)
+
+
+def test_two_modules_cannot_quietly_claim_the_same_route():
+    """It used to be settled by load order with nothing said: the loser's endpoint simply
+    stopped existing, and the module that lost still reported itself loaded.
+
+    Loaded through sys.modules so this is the real loader deciding, not a copy of its
+    logic in the test.
+    """
+    import sys
+    import types
+
+    from jong import registry
+
+    def module_serving(name, pattern):
+        made = types.ModuleType("jong.modules." + name)
+        made.NAME = name
+        made.SCHEMA = []
+        made.ROUTES = lambda: {("GET", pattern): (lambda req: {"from": name})}
+        return made
+
+    sys.modules["jong.modules.first_claim"] = module_serving("first_claim", "/api/claimed")
+    sys.modules["jong.modules.second_claim"] = module_serving("second_claim", "/api/claimed")
+    try:
+        registry.load(["first_claim", "second_claim"])
+        assert registry.has("first_claim"), "the first to ask should have it"
+        assert not registry.has("second_claim"), "the second should have been refused"
+        why = registry.failures().get("second_claim", "")
+        assert "/api/claimed" in why, why
+    finally:
+        for name in ("first_claim", "second_claim"):
+            sys.modules.pop("jong.modules." + name, None)
+        registry.load([m for m in __import__("jong.config", fromlist=["x"]).MODULES
+                       if m != "auth"])

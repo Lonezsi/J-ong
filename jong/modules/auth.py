@@ -52,16 +52,57 @@ def _paths():
             os.path.join(config.DATA, "setup-code.txt"))
 
 
+#: Why the stored secret cannot be used, or None when it is fine.
+#:
+#: "There is no password yet" and "the password is unreadable" used to be the same
+#: answer, an empty dict, and they are opposite situations. A missing file means a fresh
+#: library that should offer to set one up. A damaged file means a library that already
+#: had an owner, and treating it as fresh discards their password and their session
+#: secret the moment anything writes, which on a machine nobody is sitting at is the end
+#: of that library's credentials.
+_damaged = None
+
+
+def damaged():
+    """The reason the auth file cannot be used, or None. Re-read each time, so repairing
+    the file on disk is enough to bring the library back without a restart."""
+    _read()
+    return _damaged
+
+
 def _read():
+    global _damaged
     path, _ = _paths()
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
+            data = json.load(f)
+    except FileNotFoundError:
+        _damaged = None
+        return {}                       # never set up, which is a normal state
+    except ValueError as e:
+        _damaged = "auth.json is not readable JSON (%s)" % e
         return {}
+    except OSError as e:
+        _damaged = "auth.json could not be opened (%s)" % e
+        return {}
+    if not isinstance(data, dict):
+        _damaged = "auth.json does not hold an object"
+        return {}
+    # A file with a hash but no salt cannot check a password and cannot be repaired by
+    # guessing, so it is damaged rather than empty.
+    if data.get("hash") and not data.get("salt"):
+        _damaged = "auth.json has a password hash with no salt"
+        return {}
+    _damaged = None
+    return data
 
 
 def _write(data):
+    # Never over a file that could not be read. Whatever is in there is the only copy of
+    # a password and a session secret, and it may be recoverable by hand.
+    if damaged():
+        raise Error("the stored password is damaged and will not be overwritten: %s"
+                    % _damaged, 503)
     path, _ = _paths()
     config.ensure_dirs()
     tmp = path + ".tmp"

@@ -9,9 +9,10 @@ Standard library only, so there is nothing to install and nothing to keep in ste
 """
 import sys
 import argparse
+import threading
 import webbrowser
 
-from jong import config, http, registry
+from jong import config, http, registry, db
 
 
 def main(argv=None):
@@ -58,12 +59,33 @@ def main(argv=None):
 
     if args.open:
         webbrowser.open(where)
+    # Fold the write-ahead log back in every half minute.
+    #
+    # A commit under synchronous=NORMAL is not fsynced, so what makes it durable is the
+    # checkpoint, and nothing was doing one. The host kills this process outright
+    # whenever two health probes miss, which makes a hard kill the ordinary way it dies
+    # rather than the exceptional one. Thirty seconds is the most work that can cost.
+    stop = threading.Event()
+
+    def keep_flushing():
+        while not stop.wait(30):
+            try:
+                db.checkpoint()
+            except Exception:
+                pass          # a busy database is not a reason to take the server down
+
+    threading.Thread(target=keep_flushing, name="checkpoint", daemon=True).start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
+        stop.set()
         server.server_close()
+        # This is the one moment nothing else is running, so the log is emptied rather
+        # than merely folded back in.
+        db.close()
     return 0
 
 

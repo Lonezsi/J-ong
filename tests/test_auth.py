@@ -223,3 +223,61 @@ def test_one_address_being_locked_does_not_lock_another(secured):
         auth._note_failure("203.0.113.7")
     assert auth._wait_for("203.0.113.7") > 0
     assert auth._wait_for("198.51.100.4") == 0
+
+
+def test_a_damaged_auth_file_shuts_the_door_and_is_left_alone(secured):
+    """"There is no password yet" and "the password is unreadable" are opposite states,
+    and they used to be the same empty dict.
+
+    A missing file is a fresh library that should offer setup. A damaged one belonged to
+    somebody, and reading it as fresh means the next write destroys the only copy of
+    their password and session secret. On a machine nobody is sitting at, that is the end
+    of that library's credentials.
+
+    So it refuses everything, including the login page and the setup flow, and touches
+    nothing. Health still answers, so the watchdog can tell this apart from a wedged
+    server and does not sit in a restart loop over it.
+    """
+    import os
+
+    from jong import config
+    from jong.modules import auth
+
+    path = os.path.join(config.DATA, "auth.json")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write('{"hash": "abc", "salt"')          # cut off mid write
+    damaged = open(path, "rb").read()
+
+    assert auth.damaged(), "a truncated file should not read as an empty one"
+
+    status, _ = secured.get("/api/songs")
+    assert status == 503, "the library answered while it could not check a password"
+    status, said = secured.post("/api/auth/setup", {"code": "anything", "password": "hunter2"})
+    assert status == 503, "setup would have written over the damaged file"
+    status, _ = secured.post("/api/auth/login", {"password": "hunter2"})
+    assert status == 503
+
+    assert open(path, "rb").read() == damaged, "the damaged file was written over"
+
+    status, health = secured.get("/api/health")
+    assert status == 200, "health must keep answering or the watchdog kills it forever"
+
+    # Repairing it on disk is enough; nothing has to be restarted.
+    os.remove(path)
+    assert auth.damaged() is None
+    status, _ = secured.get("/api/health")
+    assert status == 200
+
+
+def test_a_missing_auth_file_is_still_just_a_fresh_library(secured):
+    """The other half of the same distinction: absent is normal and must keep working."""
+    import os
+
+    from jong import config
+    from jong.modules import auth
+
+    path = os.path.join(config.DATA, "auth.json")
+    if os.path.exists(path):
+        os.remove(path)
+    assert auth.damaged() is None
+    assert auth.has_password() is False

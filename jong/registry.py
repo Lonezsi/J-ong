@@ -39,6 +39,13 @@ def load(names=None):
             if migrate:
                 migrate()
             for key, handler in (getattr(module, "ROUTES", dict)() or {}).items():
+                # Two modules claiming one route used to be settled by load order, with
+                # nothing said anywhere: the loser's endpoint simply stopped existing and
+                # the module still reported itself loaded. Whichever one is second is the
+                # one that failed, and it says so.
+                if key in _routes:
+                    raise RuntimeError(
+                        "%s %s is already served by another module" % (key[0], key[1]))
                 _routes[key] = handler
         except Exception:
             # A module that cannot set itself up is switched off rather than taking the

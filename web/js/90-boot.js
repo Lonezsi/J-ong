@@ -294,6 +294,20 @@ async function boot() {
     location.hash = term ? `#/?q=${encodeURIComponent(term)}` : "#/";
   }, 220);
   search.addEventListener("input", runSearch);
+
+  /* Show what the list is filtered by.
+   *
+   * The term is written into the hash and was never read back, so a reload, a Back, or a
+   * link into a search showed a filtered library above an empty box, with no way to tell
+   * why half the songs were missing. */
+  function showTerm() {
+    const at = location.hash.indexOf("?");
+    const params = new URLSearchParams(at < 0 ? "" : location.hash.slice(at + 1));
+    const term = params.get("q") || "";
+    if (document.activeElement !== search && search.value !== term) search.value = term;
+  }
+  window.addEventListener("hashchange", showTerm);
+  showTerm();
   search.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { search.value = ""; runSearch.now(); search.blur(); }
     if (e.key === "Enter") runSearch.now();
@@ -360,15 +374,41 @@ async function boot() {
     });
   }
 
+  /* A failure inside an async handler used to reach nothing at all.
+   *
+   * Twice in one week: a ReferenceError in a click handler that saved on the server and
+   * then silently stopped, and a dead call in the equaliser that killed every drag. Both
+   * were invisible because window.onerror does not see a rejected promise, and neither
+   * left a mark anywhere. */
+  window.addEventListener("unhandledrejection", (e) => {
+    const why = (e.reason && (e.reason.message || e.reason)) || "something failed";
+    console.error("unhandled:", e.reason);
+    J.toast(`Something went wrong: ${String(why).slice(0, 120)}`, "bad");
+  });
+
   // ── keyboard ─────────────────────────────────────────────────────────────
   document.addEventListener("keydown", (e) => {
     const typing = e.target.closest("input, textarea, select, [contenteditable]");
     if (e.key === "/" && !typing) { e.preventDefault(); search.focus(); search.select(); return; }
     if (typing) return;
+
+    /* A key does one thing, and the thing nearest the hand wins.
+     *
+     * Space on a focused row called playSong here and toggle() there and toggle() again
+     * inside playSong's same-song branch, so pressing it raced three ways. And with a
+     * sheet or a menu open, Space was toggling the music behind the dialog somebody was
+     * reading. Anything with its own answer for this key gets it; the page takes what is
+     * left. */
+    if (J.menu.isOpen || document.querySelector(".sheet, dialog[open]")) return;
+    if (e.key === " " && e.target.closest("[role=button], button, a, [tabindex]")) return;
+
     if (e.key === " ") { e.preventDefault(); J.player.toggle(); }
     if (e.key === "x" || e.key === "X") { e.preventDefault(); J.player.swap(); }
-    if (e.key === "ArrowRight" && e.shiftKey) J.player.step(1);
-    if (e.key === "ArrowLeft" && e.shiftKey) J.player.step(-1);
+    // The lyric deck answers Shift+Arrow when it has focus, so the transport only takes
+    // it when nothing on the page has claimed it.
+    if (e.defaultPrevented) return;
+    if (e.key === "ArrowRight" && e.shiftKey) { e.preventDefault(); J.player.step(1); }
+    if (e.key === "ArrowLeft" && e.shiftKey) { e.preventDefault(); J.player.step(-1); }
     if (e.key === "?") { e.preventDefault(); showKeys(); }
   });
 

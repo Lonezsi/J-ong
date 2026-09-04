@@ -344,10 +344,38 @@ class Handler(BaseHTTPRequestHandler):
         from .modules import auth
         return not auth.signed_in(self.headers)
 
+    def _door_is_broken(self):
+        """The stored password exists and cannot be read.
+
+        Everything stops, including the login page and the setup flow, because both of
+        those write to the file and the file is the only copy of a password and a session
+        secret. Health still answers, so the watchdog can tell a wedged server from this
+        one and whoever comes looking is told what to repair. Note the door is *shut*
+        here, not opened: a library that cannot check a password must not let anyone in.
+        """
+        if not registry.has("auth"):
+            return None
+        from .modules import auth
+        try:
+            return auth.damaged()
+        except Exception:
+            return "the auth module could not read its own state"
+
     def _dispatch(self, method):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         query = {k: v[-1] for k, v in urllib.parse.parse_qs(parsed.query).items()}
+
+        # Before anything else, including the login page and the setup flow.
+        broken = self._door_is_broken()
+        if broken and path != "/api/health":
+            body = ("J-ong will not open. %s"
+                    "\n\nNothing has been changed or overwritten. Repair or restore "
+                    "data/auth.json and this message goes away without a restart."
+                    % broken)
+            if path.startswith("/api/"):
+                return self._json({"error": body, "locked": True}, 503)
+            return self._send(503, body.encode("utf-8"), "text/plain; charset=utf-8")
 
         if self._locked_out(path):
             if path.startswith("/api/"):

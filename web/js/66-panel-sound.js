@@ -342,6 +342,7 @@ J.blockSound = async function (panel, ctx) {
     if (editor) editor.stop();
     editor = J.eq.create(canvas, {
       data: active.data,
+      slot: liveSlot,
       onChange: (data) => {
         active.data = data;
         pushToPlayer();
@@ -371,7 +372,7 @@ J.blockSound = async function (panel, ctx) {
         const slot = liveSlot();
         return slot ? J.audio.reductionOf(slot) : 0;
       },
-      level: () => (liveSlot() ? J.audio.peakDb() : -60),
+      level: () => { const at = liveSlot(); return at ? J.audio.peakDb(at) : -60; },
       onChange: (data) => {
         active.data = data;
         pushToPlayer();

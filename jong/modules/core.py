@@ -6,7 +6,7 @@ leaving a button that returns 404.
 """
 import time
 
-from .. import config, registry, blobs
+from .. import config, registry, blobs, db
 from ..wire import Error
 
 NAME = "core"
@@ -41,7 +41,35 @@ def put_settings(req):
 
 
 def health(req):
-    return {"ok": True, "uptime": round(time.time() - _STARTED, 1)}
+    """Is this process alive, and separately, is the library it is serving whole.
+
+    `ok` stays pure liveness plus one query, because the host watchdog force-kills on it
+    and a module that failed to load is not something restarting will fix: reporting that
+    as unhealthy would put an unattended machine into a kill loop over a bad migration.
+    `degraded` says what is wrong so it can be seen without SSH, and the watchdog is
+    expected to log it and leave the server alone.
+    """
+    out = {"ok": True, "uptime": round(time.time() - _STARTED, 1)}
+    try:
+        db.one("SELECT 1 AS one")
+    except Exception as e:
+        # The port answering while the database does not is exactly the wedged state the
+        # watchdog exists for, and it was invisible to it.
+        out["ok"] = False
+        out["degraded"] = ["the database did not answer: %s" % e]
+        return out
+
+    failed = registry.failures()
+    door = None
+    if registry.has("auth"):
+        from . import auth
+        door = auth.damaged()
+    trouble = ["%s did not load" % name for name in sorted(failed)]
+    if door:
+        trouble.append(door)
+    if trouble:
+        out["degraded"] = trouble
+    return out
 
 
 def ROUTES():

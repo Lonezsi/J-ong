@@ -30,9 +30,35 @@ def connect():
     return conn
 
 
+def checkpoint():
+    """Fold the write-ahead log back into the database.
+
+    With synchronous=NORMAL a commit is not fsynced; durability arrives when the WAL is
+    checkpointed, and nothing was ever checkpointing. Meanwhile the host's routine
+    recovery is Stop-Process -Force whenever two health probes miss, so the ordinary way
+    this server dies is a hard kill against a file that has never been flushed.
+
+    Called on a timer and once on the way out, which keeps writes fast and bounds what a
+    kill can cost to whatever happened since the last tick.
+    """
+    conn = getattr(_local, "conn", None)
+    if conn is None:
+        return False
+    try:
+        conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        return True
+    except sqlite3.Error:
+        # PASSIVE never blocks a reader, so a failure here means busy, not broken.
+        return False
+
+
 def close():
     conn = getattr(_local, "conn", None)
     if conn is not None:
+        try:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
         conn.close()
         _local.conn = None
 

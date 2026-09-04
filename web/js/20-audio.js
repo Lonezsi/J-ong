@@ -18,9 +18,28 @@
 
 J.audio = (function () {
   let ctx = null;
-  let master = null, analyser = null;
-  let peakBuffer = null;
+  let master = null;
+
+  /* One meter per deck, and it is fed before the deck's own gain.
+   *
+   * There used to be a single analyser after the master gain, which is the monitoring
+   * volume: the limiter's output meter and the ceiling line drawn beside it moved when
+   * you touched the volume knob, and sat about 0.9 dB low permanently because the knob
+   * starts at 0.9. An instrument calibrated to the volume knob is worse than none.
+   *
+   * Before the A/B gain as well, because the silent deck sits at gain 0 and a deck you
+   * cannot currently hear is exactly the one you want to look at while deciding. */
+  function meterFor(entry, audioCtx) {
+    const meter = audioCtx.createAnalyser();
+    meter.fftSize = 4096;
+    meter.smoothingTimeConstant = 0.78;
+    meter.minDecibels = -96;
+    meter.maxDecibels = -6;
+    entry.makeup.connect(meter);      // a branch, not a link in the chain
+    return meter;
+  }
   const decks = {};
+  let peakBuffer = null;
 
   const FLAT = { bands: [], limiter: { on: false }, gain: 0, bypass: false };
 
@@ -31,13 +50,7 @@ J.audio = (function () {
     ctx = new Ctor();
 
     master = ctx.createGain();
-    analyser = ctx.createAnalyser();
-    analyser.fftSize = 4096;
-    analyser.smoothingTimeConstant = 0.78;
-    analyser.minDecibels = -96;
-    analyser.maxDecibels = -6;
-    master.connect(analyser);
-    analyser.connect(ctx.destination);
+    master.connect(ctx.destination);
     return ctx;
   }
 
@@ -76,6 +89,7 @@ J.audio = (function () {
 
     entry.source.connect(entry.input);
     entry.makeup.connect(entry.gain);
+    entry.meter = meterFor(entry, audioCtx);
     entry.gain.connect(master);
     rebuild(slot);
     return entry;
@@ -122,11 +136,18 @@ J.audio = (function () {
     entry.limiter.threshold.value = on ? J.clamp(lim.threshold, -60, 0) : 0;
     entry.limiter.release.value = on ? J.clamp((lim.release || 120) / 1000, 0.001, 1) : 0.25;
     entry.limiter.attack.value = on ? J.clamp((lim.attack || 5) / 1000, 0, 0.1) : 0.003;
-    // The ceiling is where the output should land, so the makeup carries the difference
-    // rather than the person doing that arithmetic.
+    /* The makeup carries ceiling minus threshold, not the ceiling.
+     *
+     * A limiter holds its output down to about the threshold, so bringing that back up
+     * to where the ceiling line is drawn is the difference between the two. Using the
+     * ceiling on its own, which is clamped to -30..0, meant the makeup was always an
+     * attenuation: switching the limiter on could only ever make things quieter, the
+     * drawn ceiling was never approached, and comparing limiter against bypass was
+     * comparing loudness rather than limiting. */
     const ceiling = on ? J.clamp(lim.ceiling, -30, 0) : 0;
+    const threshold = on ? J.clamp(lim.threshold, -60, 0) : 0;
     const trim = settings.bypass ? 0 : (settings.gain || 0);
-    entry.makeup.gain.value = Math.pow(10, (ceiling + trim) / 20);
+    entry.makeup.gain.value = Math.pow(10, ((ceiling - threshold) + trim) / 20);
   }
 
   return {
@@ -145,7 +166,8 @@ J.audio = (function () {
       return entry ? entry.input : null;
     },
 
-    get analyser() { return analyser; },
+    // Kept for the EQ's spectrum, which draws whichever deck it is showing.
+    get analyser() { return (decks.A && decks.A.meter) || null; },
     get ready() { return !!ctx; },
 
     async resume() {
@@ -224,9 +246,16 @@ J.audio = (function () {
       return entry && entry.limiter ? Math.abs(entry.limiter.reduction || 0) : 0;
     },
 
-    spectrum(target) {
-      if (!analyser) return null;
-      analyser.getByteFrequencyData(target);
+    /* The analyser for one deck, or the A deck when none is named. */
+    analyserOf(slot) {
+      const entry = decks[slot || "A"];
+      return entry ? entry.meter || null : null;
+    },
+
+    spectrum(target, slot) {
+      const meter = this.analyserOf(slot);
+      if (!meter) return null;
+      meter.getByteFrequencyData(target);
       return target;
     },
 
@@ -234,15 +263,22 @@ J.audio = (function () {
      *
      * Read from the waveform rather than the spectrum: a frequency bin says how much of
      * one band is present, and a meter is asking how loud the whole thing is. */
-    peakDb() {
-      if (!analyser) return -60;
-      if (!peakBuffer || peakBuffer.length !== analyser.fftSize) {
-        peakBuffer = new Uint8Array(analyser.fftSize);
+    peakDb(slot) {
+      const meter = this.analyserOf(slot);
+      if (!meter) return -60;
+      /* Float, not bytes.
+       *
+       * getByteTimeDomainData maps the signal onto 0..255, which saturates at exactly
+       * plus or minus full scale, so the one event a peak meter exists to catch is the
+       * one it could not display: everything from just-clipping to hopelessly clipped
+       * read as the same number. Float samples go past 1.0 and say how far. */
+      if (!peakBuffer || peakBuffer.length !== meter.fftSize) {
+        peakBuffer = new Float32Array(meter.fftSize);
       }
-      analyser.getByteTimeDomainData(peakBuffer);
+      meter.getFloatTimeDomainData(peakBuffer);
       let peak = 0;
       for (let i = 0; i < peakBuffer.length; i++) {
-        const sample = Math.abs(peakBuffer[i] - 128) / 128;
+        const sample = peakBuffer[i] < 0 ? -peakBuffer[i] : peakBuffer[i];
         if (sample > peak) peak = sample;
       }
       return peak > 0.0002 ? 20 * Math.log10(peak) : -60;

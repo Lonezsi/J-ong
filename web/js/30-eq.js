@@ -96,12 +96,14 @@ J.eq = (function () {
     }
 
     function drawSpectrum() {
-      const analyser = J.audio.analyser;
+      // Whichever deck this editor is shaping, so the spectrum behind the curve is
+      // the sound that curve is being applied to.
+      const analyser = J.audio.analyserOf(opts.slot && opts.slot());
       if (!analyser) return;
       if (!spectrumBins || spectrumBins.length !== analyser.frequencyBinCount) {
         spectrumBins = new Uint8Array(analyser.frequencyBinCount);
       }
-      J.audio.spectrum(spectrumBins);
+      J.audio.spectrum(spectrumBins, opts.slot && opts.slot());
       const audioCtx = J.audio.context();
       if (!audioCtx) return;
       const nyquist = audioCtx.sampleRate / 2;
