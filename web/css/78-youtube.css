@@ -188,3 +188,24 @@
 .yt-chosen { background: var(--accent); color: var(--text-on-accent); font-weight: 700; }
 .yt-pick { border: 1px solid var(--line-2); color: var(--text-3); }
 .yt-account:hover .yt-pick { border-color: var(--accent-line); color: var(--accent-hi); }
+
+/* The card that says what is not built.
+ *
+ * A page carrying a title field, a description, three visibility choices and a connected
+ * account reads as a page that can publish. It cannot yet, and leaving somebody to
+ * discover that by looking for a button which is not there is worse than saying so. */
+.yt-last { border-color: var(--line-2); }
+.yt-last p { margin: 0; font-size: 13.5px; max-width: 60ch; }
+.yt-last b { color: var(--text); }
+.yt-last .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+/* On a narrow screen the head and the control beside it stop competing for one line.
+   "The sound that goes out" was breaking across three lines to leave room for the preset
+   tabs; below 560px they stack and each gets the full width. */
+@media (max-width: 560px) {
+  .yt-card-head { flex-wrap: wrap; }
+  .yt-card-head h2 { flex: 1 1 100%; }
+  .yt-card-head .grow { display: none; }
+  .yt-card-head .preset-row { flex: 1 1 100%; }
+  .yt-card { padding: var(--s4); }
+}

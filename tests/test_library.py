@@ -312,3 +312,81 @@ def test_the_error_log_cannot_grow_without_bound(server):
     assert "number %d" % (problems.LIMIT + 24) in problems.recent(1)[0]["traceback"], \
         "the newest is not the one at the top"
     problems.clear()
+
+
+# ── the module model, exercised rather than assumed ──────────────────────────
+
+@pytest.mark.parametrize("without", [
+    "albums", "playlists", "youtube", "arrange", "sound", "lyrics", "artwork", "sync",
+])
+def test_the_library_still_opens_with_any_one_feature_switched_off(server, without):
+    """Removing a name from config.MODULES is meant to remove the feature cleanly. Every
+    test until now loaded the whole list, or the whole list minus auth, so nothing checked
+    the claim the architecture rests on.
+
+    What this proves and what it does not, stated because a test that overclaims is worse
+    than a narrow one. It proves: the remaining modules import, apply their schema, run
+    their migrations and register their routes without the absent one, and every listing
+    route still answers. It does NOT prove behaviour against a library that never had the
+    absent module's tables, because switching a module off does not drop them: the tables
+    are still there, so db.table_exists still says yes and a module reaching for an absent
+    neighbour's data would not be caught here. That needs a database built from a reduced
+    module list, which is a fixture this does not have.
+    """
+    from jong import config, registry
+
+    keep = [m for m in config.MODULES if m not in ("auth", without)]
+    try:
+        registry.load(keep)
+        assert not registry.failures(), \
+            "with %s off, these could not load: %s" % (without, registry.failures())
+
+        status, state = server.get("/api/state")
+        assert status == 200, state
+        assert without not in state["modules"]
+
+        status, health = server.get("/api/health")
+        assert status == 200
+        assert health["ok"] is True
+        assert "degraded" not in health, health
+
+        # Every listing route of every module still loaded, because loading is not the
+        # same as working: a module that reaches for an absent neighbour only fails on
+        # the request that reaches. Hitting /api/state and /api/songs alone missed
+        # exactly that, which this comment exists to stop anyone reintroducing.
+        for path in ("/api/songs", "/api/renders", "/api/albums", "/api/playlists",
+                     "/api/sync/folders"):
+            owner = {"/api/albums": "albums", "/api/playlists": "playlists",
+                     "/api/renders": "renders", "/api/sync/folders": "sync"}.get(path)
+            status, body = server.get(path)
+            if owner and owner not in keep:
+                assert status == 404, "%s answered with %s off" % (path, owner)
+            else:
+                assert status == 200, "%s broke with %s off: %s" % (path, without, body)
+    finally:
+        registry.load([m for m in config.MODULES if m != "auth"])
+
+
+def test_a_song_page_can_be_built_with_every_optional_module_off(server):
+    """The song page fetches from seven endpoints and mounts six blocks. With the optional
+    modules off, the calls it guards must be the ones that are actually absent."""
+    from jong import config, registry
+
+    core = ["core", "songs", "versions", "renders"]
+    try:
+        registry.load(core)
+        assert not registry.failures(), registry.failures()
+
+        _, made = server.post("/api/songs", {"title": "Bare"})
+        song_id = made["song"]["id"]
+
+        status, got = server.get("/api/songs/%d" % song_id)
+        assert status == 200, got
+        assert got["song"]["title"] == "Bare"
+
+        # The optional ones are gone rather than broken.
+        for gone in ("/api/songs/%d/lyrics", "/api/songs/%d/sound", "/api/songs/%d/albums"):
+            status, _ = server.get(gone % song_id)
+            assert status == 404, "%s answered with those modules off" % gone
+    finally:
+        registry.load([m for m in config.MODULES if m != "auth"])

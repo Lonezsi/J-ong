@@ -172,9 +172,14 @@ J.views.youtube = {
       if (J.player && J.player.presetEdited) J.player.presetEdited(preset.id, preset.data);
     }, 500);
 
+    function freeAudition() {
+      if (bounced && bounced.url) URL.revokeObjectURL(bounced.url);
+    }
+
     /* Anything rendered before an edit is no longer what the form describes. */
     function stale() {
       if (!bounced) return;
+      freeAudition();
       bounced = null;
       const result = J.$("#ytResult", root);
       if (result) { result.hidden = true; result.innerHTML = ""; }
@@ -200,9 +205,15 @@ J.views.youtube = {
             if (bar) bar.style.width = `${Math.round(at * 100)}%`;
           },
         });
+        freeAudition();
+        const blob = J.bounce.toWav(buffer);
         bounced = {
           buffer,
-          blob: J.bounce.toWav(buffer),
+          blob,
+          // Held so it can be given back. A rendered wav is tens of megabytes and this
+          // page invites you to render again after every change to the curve; without
+          // this, each one stays in memory until the tab closes.
+          url: URL.createObjectURL(blob),
           peak: J.bounce.peakOf(buffer),
           seconds: buffer.duration,
         };
@@ -233,7 +244,7 @@ J.views.youtube = {
             ${bounced.peak.toFixed(1)}&nbsp;dB, which is above what a file can hold, so it
             has been flattened at the top. Turn the limiter on, or pull the gain down by
             about ${Math.ceil(bounced.peak)}&nbsp;dB, and render again.</p>` : ""}
-          <audio class="yt-audition" controls src="${URL.createObjectURL(bounced.blob)}"></audio>
+          <audio class="yt-audition" controls src="${bounced.url}"></audio>
           <div class="row wrap">
             <button class="btn sm ghost" data-act="download">Save the file</button>
             <span class="faint">${J.bytes(bounced.blob.size)} &middot; ${J.time(bounced.seconds)}</span>
@@ -430,6 +441,21 @@ J.views.youtube = {
                 a plain colour. Add a picture on the song page first if that matters.</p>`}
             </section>
 
+            <section class="yt-card yt-last">
+              <h2>Sending it</h2>
+              <p>Everything above is finished and working: the file is rendered from the
+                sound and the cut you set here, and it can be auditioned and saved.
+                <b>J-ong cannot send it to YouTube yet.</b></p>
+              <p class="faint">YouTube takes video, not audio, so a rendered wav cannot be
+                uploaded as it is. Turning the audio and the artwork into a video is the
+                one piece still to build. Until then: render it, save the file, and put it
+                up by hand.</p>
+              <div class="row wrap">
+                <button class="btn primary" disabled title="Not built yet">Send to YouTube</button>
+                <span class="faint">the last step, not yet built</span>
+              </div>
+            </section>
+
             <section class="yt-card">
               <div class="yt-card-head">
                 <h2>The account</h2>
@@ -533,7 +559,7 @@ J.views.youtube = {
 
       if (what === "download" && bounced) {
         const link = document.createElement("a");
-        link.href = URL.createObjectURL(bounced.blob);
+        link.href = bounced.url;
         link.download = `${ctx.song.title} v${ctx.current.n}.wav`;
         document.body.appendChild(link);
         link.click();
@@ -543,9 +569,14 @@ J.views.youtube = {
     });
 
     /* Cutting a clip changes the length of what goes out, so the summary follows it and
-     * anything already rendered stops being the truth. */
+     * anything already rendered stops being the truth. Also the moment to notice the page
+     * has gone and give back what it was holding. */
     J.on("arrange:change", function follow() {
-      if (!root.isConnected) { J.bus.removeEventListener("arrange:change", follow); return; }
+      if (!root.isConnected) {
+        J.bus.removeEventListener("arrange:change", follow);
+        freeAudition();
+        return;
+      }
       stale();
       paintSummary();
     });
