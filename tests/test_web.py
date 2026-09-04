@@ -560,3 +560,33 @@ def test_no_module_is_called_for_something_it_does_not_have():
             if member not in surface[module]:
                 missing["J.%s.%s" % (module, member)] = sorted(files)
     assert not missing, "called but not there: %s" % missing
+
+
+def test_the_lyrics_deck_holds_its_gestures_on_something_that_survives_a_redraw():
+    """Swiping the lyrics card worked exactly once, then never again.
+
+    The deck's drag was bound to #deckWindow. Changing card calls go(), which schedules
+    draw(), and draw() rewrites block.innerHTML: #deckWindow is a different element
+    afterwards and the listeners went in the bin with the old one. The arrows, the dots
+    and the keyboard all kept working, because those are delegated on block, which is
+    never replaced. Only the drag was bound to the thing that gets thrown away, so the
+    failure looked like "swiping breaks the card" rather than like a redraw.
+
+    The rule this encodes: in a panel that redraws itself, listeners belong on the root
+    that survives, and the element inside is resolved when the gesture happens.
+    """
+    text = pathlib.Path(JS_DIR, "62-panel-lyrics.js").read_text(encoding="utf-8")
+
+    body = re.search(r"function wireDrag\(\)\s*\{(.*?)\n  \}", text, re.S)
+    assert body, "wireDrag is not shaped the way this test reads it"
+
+    bound = set(re.findall(r"(\w+)\.addEventListener\(", body.group(1)))
+    assert bound, "wireDrag binds nothing at all"
+    assert bound == {"block"}, (
+        "the deck's drag is bound to %s; draw() replaces everything inside block, so a "
+        "listener held there survives one redraw at most" % sorted(bound - {"block"}))
+
+    # And the ids inside the redrawn markup must not be captured once and kept.
+    kept = re.findall(r"(?:const|let)\s+\w+\s*=\s*J\.\$\(\s*[\"']#deck(?:Window|Track)",
+                      body.group(1))
+    assert not kept, "the deck elements are resolved once and held across redraws"

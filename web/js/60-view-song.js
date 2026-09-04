@@ -106,6 +106,11 @@ J.views.song = {
                 ${albums.length ? '<span class="dot"></span>' : ""}
                 ${albums.map((a) => `<a href="#/album/${a.id}" data-link>${J.esc(a.title)}</a>`)
                   .join('<span class="dot"></span>')}
+                ${song.created_at ? `<span class="dot"></span>
+                  <span title="Started ${J.esc(J.date(song.created_at))}${
+                    song.updated_at && song.updated_at > song.created_at
+                      ? `, last touched ${J.esc(J.date(song.updated_at))}` : ""}"
+                  >started ${J.esc(J.when(song.created_at))}</span>` : ""}
               </span>
             </div>
 
@@ -270,7 +275,22 @@ function wireAB(root, ctx) {
     if (add) { openSlotMenu(add, "B", ctx, paint); return; }
     const chip = e.target.closest(".slot-pick");
     if (!chip) return;
-    openSlotMenu(chip, chip.dataset.slot, ctx, paint);
+    const slot = chip.dataset.slot;
+
+    /* The chip selects, the caret opens the menu.
+     *
+     * These read as dropdowns and they had no way to choose between them: clicking
+     * either one only ever opened a menu, so which deck you were listening to, and
+     * therefore which equaliser the Sound panel was shaping, could only be changed from
+     * the player at the bottom of the screen. Pressing B here now means B, and the panel
+     * follows. The caret keeps the menu, and so does a right click. */
+    if (!e.target.closest(".caret")) {
+      const playing = J.player.state.song && J.player.state.song.id === ctx.song.id;
+      const held = playing ? J.player.state.slots[slot] : null;
+      if (held && held.version) { J.player.switchTo(slot); paint(); return; }
+      // Nothing in it to select yet, so the useful thing is to put something there.
+    }
+    openSlotMenu(chip, slot, ctx, paint);
   });
 
   J.on("player:change", function onChange() {
@@ -278,6 +298,35 @@ function wireAB(root, ctx) {
     paint();
   });
   paint();
+}
+
+/* Filling a slot when both were sharing one equaliser.
+ *
+ * A song opens with the same preset object in A and in B, and an edit is applied by id
+ * to every slot holding it, so shaping the curve while B was selected reshaped A as
+ * well. Hearing one take through two identical equalisers is not a comparison, and the
+ * only way to get a real one was to know to go and make a second preset first.
+ *
+ * Putting a take into the other slot is the moment somebody says they want to compare,
+ * so that is where the copy is made: B gets its own preset, named after the one it came
+ * from, and A keeps what it had. Done here and not on the first drag, because forking
+ * halfway through a gesture would mean a POST inside a pointermove.
+ */
+async function forkIfShared(slot, ctx) {
+  const state = J.player.state;
+  const other = slot === "A" ? "B" : "A";
+  const mine = state.slots[slot];
+  const theirs = state.slots[other];
+  if (!mine || !theirs || !mine.preset || !theirs.preset) return;
+  if (mine.preset.id !== theirs.preset.id) return;          // already their own
+  if (!theirs.version) return;                              // nothing to compare against
+
+  const made = await J.try(() => J.post(`/api/songs/${ctx.songId}/sound`,
+    { name: `${mine.preset.name} ${slot}`, data: mine.preset.data }));
+  if (!made || !made.preset) return;                        // it still works, just shared
+  ctx.presets = (ctx.presets || []).concat([made.preset]);
+  await J.player.set(slot, { preset: made.preset });
+  J.emit("sound:change");
 }
 
 /* One menu holding both things a slot carries: which render, and which sound. */
@@ -427,6 +476,7 @@ function openSlotMenu(anchor, slot, ctx, done) {
     if (row.dataset.version) {
       const version = ctx.versions.find((v) => String(v.id) === row.dataset.version);
       await J.player.set(slot, { version });
+      await forkIfShared(slot, ctx);
     } else {
       const preset = ctx.presets.find((p) => String(p.id) === row.dataset.preset);
       await J.player.set(slot, { preset });

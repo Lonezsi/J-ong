@@ -153,3 +153,17 @@
 .render-art:hover { transform: scale(1.06); }
 .render-art:active { transform: scale(0.97); }
 .render-name { cursor: pointer; }
+
+/* The two dates a render can carry. Its own line at the end of the row, wrapping onto a
+   line of its own the way the arrangement strip does, so a long name never pushes them
+   out of the row and nothing here is what gets clipped first. */
+.render-dates {
+  flex: 0 0 100%;
+  display: flex; align-items: center; gap: var(--s2);
+  margin-top: 2px;
+  font-size: 11.5px; color: var(--text-3);
+}
+.render-dates .dot {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: currentColor; opacity: 0.5; flex: none;
+}

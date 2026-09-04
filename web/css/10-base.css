@@ -198,4 +198,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
    Where the filter cannot be had at all, those surfaces fall back to solid. */
 @supports not (backdrop-filter: blur(1px)) {
   .rail, .topbar, .player, .sheet, .slot-menu { background: var(--surface); }
+  /* The card carries text rather than chrome, so it falls back to the panel colour
+     it used to be rather than to a nearly invisible film. */
+  .lyric-card { background: var(--surface-2); }
 }

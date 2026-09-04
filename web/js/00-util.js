@@ -189,3 +189,119 @@ J.skeleton = (kind) => {
     </div>
   </div>`;
 };
+
+/* Sorting a list, and remembering how you like it.
+ *
+ * One mechanism for every list rather than one per view, because "sort by name" has to
+ * mean the same thing and look the same wherever it appears. A list declares which keys
+ * it can be sorted by; this holds the choice, draws the control and does the comparing.
+ *
+ * The choice is kept per list in this browser. It is a preference about looking, not a
+ * fact about the library, so it does not belong on the server and it does not need to
+ * follow you to another machine.
+ *
+ * The first key a list declares is its default, which for a running order is always the
+ * running order itself. An album's track list and a playlist are sequences somebody
+ * chose; offering to sort them is useful, opening them re-sorted is throwing that away.
+ */
+J.sort = (function () {
+  const KEY = "jong.sort";
+
+  function all() {
+    try { return JSON.parse(localStorage.getItem(KEY) || "{}") || {}; }
+    catch (e) { return {}; }        // a private window, or something else's key
+  }
+
+  function keep(map) {
+    try { localStorage.setItem(KEY, JSON.stringify(map)); } catch (e) { /* fine */ }
+  }
+
+  /* Text compares as a person reads it: case blind, and "Track 10" after "Track 9".
+   * Numbers and dates compare as numbers, and anything missing sinks to the bottom
+   * whichever way round the list is, because an empty value is not a small one. */
+  function compare(a, b, field, numeric, dir) {
+    const left = field(a);
+    const right = field(b);
+    const missing = (v) => v === null || v === undefined || v === "" ||
+                           (numeric && !Number.isFinite(Number(v)));
+    if (missing(left) || missing(right)) {
+      if (missing(left) && missing(right)) return 0;
+      return missing(left) ? 1 : -1;
+    }
+    const order = numeric
+      ? Number(left) - Number(right)
+      : String(left).localeCompare(String(right), undefined,
+                                   { sensitivity: "base", numeric: true });
+    return dir === "down" ? -order : order;
+  }
+
+  return {
+    /* What this list is sorted by right now, as {key, dir}. */
+    of(list, keys) {
+      const kept = all()[list];
+      const known = keys.find((k) => k.key === (kept && kept.key));
+      const chosen = known || keys[0];
+      return { key: chosen.key, dir: (kept && kept.dir) || chosen.dir || "up", def: chosen };
+    },
+
+    set(list, key, dir) {
+      const map = all();
+      map[list] = { key, dir };
+      keep(map);
+    },
+
+    /* A copy, in order. Never the array that was handed in: several views hold on to
+     * theirs and look rows up in it by index. */
+    apply(items, list, keys) {
+      const now = this.of(list, keys);
+      const spec = keys.find((k) => k.key === now.key) || keys[0];
+      if (!spec || !spec.by) return items.slice();     // the untouched order
+      return items.slice().sort((a, b) => compare(a, b, spec.by, !!spec.numeric, now.dir));
+    },
+
+    /* The control. One button that says what the list is sorted by, opening a menu of
+     * the rest. The arrow is the direction and pressing the current key flips it, which
+     * is the one gesture every table in the world already has. */
+    control(list, keys) {
+      const now = this.of(list, keys);
+      const spec = keys.find((k) => k.key === now.key) || keys[0];
+      const fixed = !spec.by;                     // the running order cannot be reversed
+      return `<button class="btn ghost sm sort-pick" data-sort-list="${J.esc(list)}"
+                title="Sort this list">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+             class="sort-mark ${fixed ? "" : now.dir}"><path d="M3 6h13M3 12h9M3 18h5"/>${
+          fixed ? "" : '<path d="M18 8v11M15 16l3 3 3-3"/>'}</svg>
+        <span>${J.esc(spec.label)}</span>
+      </button>`;
+    },
+
+    /* Wire the control up. onChange is called after the choice is stored. */
+    wire(root, list, keys, onChange) {
+      const open = (node) => {
+        const now = this.of(list, keys);
+        J.menu.show(keys.map((k) => ({
+          label: k.label + (k.key === now.key && k.by
+            ? (now.dir === "down" ? "  \u2193" : "  \u2191") : ""),
+          icon: k.key === now.key ? "check" : null,
+          run: () => {
+            // Pressing the one it is already sorted by turns it round.
+            const dir = k.key === now.key && k.by
+              ? (now.dir === "down" ? "up" : "down")
+              : (k.dir || "up");
+            this.set(list, k.key, dir);
+            onChange();
+          },
+        })), { anchor: node });
+      };
+      root.addEventListener("click", (e) => {
+        const hit = e.target.closest(`[data-sort-list="${CSS.escape(list)}"]`);
+        if (hit) { e.preventDefault(); open(hit); }
+      });
+      root.addEventListener("contextmenu", (e) => {
+        const hit = e.target.closest(`[data-sort-list="${CSS.escape(list)}"]`);
+        if (hit) { e.preventDefault(); open(hit); }
+      });
+    },
+  };
+}());

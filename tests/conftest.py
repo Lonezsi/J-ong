@@ -120,13 +120,17 @@ def server():
         def delete(self, path):
             return self.request("DELETE", path)
 
-        def upload(self, path, file_path, filename=None):
+        def upload(self, path, file_path, filename=None, headers=None):
             with open(file_path, "rb") as f:
                 blob = f.read()
-            return self.request("POST", path, data=blob, headers={
+            head = {
                 "Content-Type": "application/octet-stream",
                 "X-Filename": filename or os.path.basename(file_path),
-            })
+            }
+            # Extras rather than a replacement, so a test can add one header without
+            # having to restate the two that every upload needs.
+            head.update(headers or {})
+            return self.request("POST", path, data=blob, headers=head)
 
     try:
         yield Client()

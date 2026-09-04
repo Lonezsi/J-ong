@@ -84,6 +84,11 @@ J.renders = {
       J.toast(result.already_there
         ? `${render.name} was already v${result.version.n} of ${result.song.title}.`
         : `${render.name} is now v${result.version.n} of ${result.song.title}.`);
+      // A song that has just been brought into existence is somewhere to go. One that
+      // already existed is not: filing a render against it is a thing you do while
+      // working down the renders list, and being thrown out of that list each time
+      // would make filing three renders in a row impossible.
+      if (chosen.fresh && result.song) location.hash = `#/song/${result.song.id}`;
       return result;
     });
   },
@@ -164,6 +169,23 @@ J.renders = {
   },
 };
 
+/* What this list can be put in order by.
+ *
+ * Newest first is the default because the reason you are on this screen is almost always
+ * the thing you just bounced. Project date is the .flp's own age, which groups a night's
+ * work together however many times it was re-rendered since. */
+const SORTS = [
+  { key: "arrived", label: "Newest first", dir: "down", numeric: true,
+    by: (r) => r.created_at },
+  { key: "rendered", label: "When it was rendered", dir: "down", numeric: true,
+    by: (r) => r.rendered_at || r.created_at },
+  { key: "project", label: "When the project was made", dir: "down", numeric: true,
+    by: (r) => r.project_at },
+  { key: "name", label: "Name", dir: "up", by: (r) => r.name },
+  { key: "length", label: "Length", dir: "down", numeric: true, by: (r) => r.duration },
+  { key: "size", label: "Size", dir: "down", numeric: true, by: (r) => r.size },
+];
+
 J.views.renders = {
   title: "Renders",
   async render(root) {
@@ -216,6 +238,28 @@ J.views.renders = {
       }
     }
 
+    /* When it was made, and when the project behind it was.
+     *
+     * Its own line rather than appended to the size and format, because that line is
+     * marked truncate and anything added to the end of it is the first thing to be
+     * clipped. A render only has these if it came through the FL client or was taken in
+     * from a folder with the project still beside it, so the line is absent rather than
+     * showing a blank where a date should be. Zero is how "not known" is spelled
+     * everywhere in this library, and J.when draws nothing for it. */
+    function dates(render) {
+      const bits = [];
+      if (render.rendered_at) {
+        bits.push(`<span title="When this audio was rendered">rendered ${
+          J.esc(J.when(render.rendered_at))}</span>`);
+      }
+      if (render.project_at) {
+        bits.push(`<span title="When the project it came out of was made">project ${
+          J.esc(J.when(render.project_at))}</span>`);
+      }
+      if (!bits.length) return "";
+      return `<span class="render-dates">${bits.join('<span class="dot"></span>')}</span>`;
+    }
+
     function card(render) {
       const used = !render.waiting;
       return `
@@ -242,10 +286,18 @@ J.views.renders = {
                 ? ` · ${J.esc(render.ext.replace(".", "").toUpperCase())}` : ""}
               ${used ? ` · went to <b>${J.esc(render.song_title || "a song")}</b>` : ""}
             </span>
+            ${dates(render)}
           </span>
           ${used
             ? `<button class="btn sm ghost" data-act="unattach">Put back</button>`
             : `<span class="row-go">Add to a song</span>`}
+          ${J.state.modules.includes("playlists") ? `
+            <button class="icon-btn" data-act="playlist"
+                    title="Add ${J.esc(render.name)} to a playlist"
+                    aria-label="Add ${J.esc(render.name)} to a playlist">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+                   stroke-width="1.9" stroke-linecap="round"><path d="M4 7h11M4 12h11M4 17h7"/><path d="M17 14v6M14 17h6"/></svg>
+            </button>` : ""}
           <button class="icon-btn" data-act="dismiss" aria-label="Throw this render away">
             <svg viewBox="0 0 24 24" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
           </button>
@@ -274,13 +326,14 @@ J.views.renders = {
             <h2>Renders</h2>
             ${waiting ? `<span class="tag accent">${waiting} waiting</span>` : ""}
             <span class="grow"></span>
+            ${J.sort.control("renders", SORTS)}
             <button class="btn sm ghost" data-act="ingest">Take in a folder</button>
             <button class="btn sm ghost" data-act="toggle">
               ${showAll ? "Only waiting" : "Show used"}
             </button>
           </div>
 
-          ${rows.length ? rows.map(card).join("") : `
+          ${rows.length ? J.sort.apply(rows, "renders", SORTS).map(card).join("") : `
             <div class="empty">
               <h3>Nothing waiting</h3>
               <p>Renders land here first, keeping the name of the project they came out
@@ -376,7 +429,9 @@ J.views.renders = {
          * scrubber and the volume, like everything else that makes a sound here. It
          * used to be a bare Audio element with no way to pause it except this button
          * and no way to see where you were. */
-        const queue = rows.filter((r) => r.waiting);
+        // In the order they are on screen, not the order they arrived. What plays next
+        // should be the row underneath the one you pressed.
+        const queue = J.sort.apply(rows, "renders", SORTS).filter((r) => r.waiting);
         if (J.player.state.song && J.player.state.song.id === `render:${render.id}`) {
           J.player.toggle();
         } else {
@@ -401,6 +456,10 @@ J.views.renders = {
           J.toast(`${made.song.title} made, with this as v${made.version.n}.`);
           location.hash = `#/song/${made.song.id}`;
         });
+      }
+
+      if (act.dataset.act === "playlist") {
+        return J.addToPlaylist({ kind: "render", id: render.id, title: render.name });
       }
 
       if (act.dataset.act === "rename") return renameRender(render);
@@ -441,6 +500,8 @@ J.views.renders = {
       if (!root.isConnected) { J.bus.removeEventListener("player:change", follow); return; }
       draw();
     });
+
+    J.sort.wire(root, "renders", SORTS, draw);
 
     await load();
   },

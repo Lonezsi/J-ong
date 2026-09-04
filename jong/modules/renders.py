@@ -33,12 +33,32 @@ SCHEMA = [
       origin      TEXT NOT NULL DEFAULT 'upload',
       created_at  REAL NOT NULL,
       used_at     REAL NOT NULL DEFAULT 0,
+      project_at  REAL NOT NULL DEFAULT 0,
+      rendered_at REAL NOT NULL DEFAULT 0,
       song_id     INTEGER,
       version_id  INTEGER
     )
     """,
     "CREATE INDEX IF NOT EXISTS renders_waiting ON renders(used_at, created_at DESC)",
 ]
+
+
+def MIGRATE():
+    """Two dates a library made before them will not have.
+
+    created_at is when J-ong first saw the bytes, which is a fact about this library
+    rather than about the music: re-import an old bounce today and it is dated today.
+    These two are about the work. project_at is the age of the .flp it came out of, so a
+    night's worth of takes group together however many times they were re-rendered
+    since, and rendered_at is when the audio itself was made.
+
+    Both default to 0 rather than to a time, because SQLite cannot put a computed
+    default on an added column and because a made up date is worse than a missing one.
+    Zero already means "not known" everywhere else here: used_at uses it for waiting,
+    and J.when draws nothing for it.
+    """
+    db.add_column_if_missing("renders", "project_at", "REAL NOT NULL DEFAULT 0")
+    db.add_column_if_missing("renders", "rendered_at", "REAL NOT NULL DEFAULT 0")
 
 
 def get(render_id):
@@ -68,20 +88,53 @@ def list_renders(req):
     return {"renders": _decorate(rows), "waiting": waiting["n"] if waiting else 0}
 
 
-def _remember(digest, ext, size, filename, source_path, origin, duration=0.0, bitrate=0):
+def _remember(digest, ext, size, filename, source_path, origin, duration=0.0, bitrate=0,
+              project_at=0.0, rendered_at=0.0):
     """Write the row, or hand back the one that already holds these bytes.
 
     The same render arriving twice, from a re-scan or a second machine, is one entry. It
     keeps the first name it was given rather than flickering between two.
+
+    A second arrival may still know a date the first did not: a file taken in from a
+    folder has no project behind it, and the same bytes sent later by the FL client do.
+    So dates are filled in when they are missing and never overwritten, which keeps the
+    row growing more accurate without letting a re-import move a date that was right.
     """
     existing = db.one("SELECT * FROM renders WHERE digest = ?", (digest,))
     if existing:
+        learned = {}
+        if project_at and not existing.get("project_at"):
+            learned["project_at"] = project_at
+        if rendered_at and not existing.get("rendered_at"):
+            learned["rendered_at"] = rendered_at
+        if learned:
+            db.update("renders", existing["id"], learned)
+            return get(existing["id"]), False
         return existing, False
     render_id = db.insert("renders", {
         "digest": digest, "ext": ext, "size": size, "duration": duration,
         "bitrate": bitrate, "filename": filename, "source_path": source_path,
-        "origin": origin, "created_at": time.time()})
+        "origin": origin, "created_at": time.time(),
+        "project_at": project_at or 0.0, "rendered_at": rendered_at or 0.0})
     return get(render_id), True
+
+
+def _stamp(req, name):
+    """A date sent as a header, in epoch seconds, or zero.
+
+    Anything that is not a number, or is far enough out to be a clock rather than a
+    date, is dropped rather than stored: a wrong date shown confidently is worse than
+    no date at all.
+    """
+    raw = (req.headers.get(name) or "").strip()
+    if not raw:
+        return 0.0
+    try:
+        value = float(raw)
+    except ValueError:
+        return 0.0
+    # Anything before 1990 or more than a day ahead is a clock that cannot be trusted.
+    return value if 631152000 < value < time.time() + 86400 else 0.0
 
 
 def upload(req):
@@ -99,8 +152,40 @@ def upload(req):
     row, added = _remember(digest, ext, size, filename,
                            (req.headers.get("X-Source-Path") or "").strip(),
                            (req.headers.get("X-Origin") or "upload").strip(),
-                           meta["duration"], meta["bitrate"])
+                           meta["duration"], meta["bitrate"],
+                           _stamp(req, "X-Project-At"), _stamp(req, "X-Rendered-At"))
     return {"render": _decorate([row])[0], "added": added}
+
+
+def _mtime(path):
+    """When the file was last written, which for a bounce is when it was rendered."""
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0.0
+
+
+def _project_beside(path):
+    """The age of the .flp this audio came out of, if it is lying next to it.
+
+    FL renders into the project's own folder unless told otherwise, so a bounce is
+    usually a sibling of the project with the same stem. That is a guess, but a cheap and
+    safe one: the worst case is no date rather than a wrong one, because the name has to
+    match exactly.
+
+    getctime is a creation time on Windows, which is where FL runs. Elsewhere it is the
+    inode change time, which a rename would bump, so the earlier of the two is taken:
+    a project cannot have been written before it was made.
+    """
+    stem = os.path.splitext(path)[0]
+    for ext in (".flp", ".FLP"):
+        project = stem + ext
+        if os.path.isfile(project):
+            try:
+                return min(os.path.getctime(project), os.path.getmtime(project))
+            except OSError:
+                return 0.0
+    return 0.0
 
 
 def ingest(req):
@@ -131,7 +216,8 @@ def ingest(req):
         meta = audio_meta.probe(blobs.path_for(digest), ext)
         row, is_new = _remember(digest, ext, size, os.path.basename(item), item,
                                 (data.get("origin") or "import").strip(),
-                                meta["duration"], meta["bitrate"])
+                                meta["duration"], meta["bitrate"],
+                                _project_beside(item), _mtime(item))
         if is_new:
             added.append(row)
         else:

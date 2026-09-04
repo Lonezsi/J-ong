@@ -231,3 +231,100 @@ def test_something_that_is_not_audio_is_refused(server, tmp_path):
     status, answer = server.upload("/api/renders", str(fake))
     assert status == 400
     assert "audio" in answer["error"]
+
+
+# ── the two dates a render can carry ─────────────────────────────────────────
+
+def test_a_render_carries_when_it_was_made_and_when_its_project_was(server, wav, tmp_path):
+    """created_at is when this library first saw the bytes, which is a fact about the
+    library rather than about the music: re-import a bounce from last year today and it
+    is dated today. These two are about the work, and they have to come from outside.
+
+    On the upload path the server has no file to look at, so they ride as headers.
+    """
+    import time
+
+    project_made = time.time() - 86400 * 30
+    bounced = time.time() - 3600
+
+    status, arrived = server.upload("/api/renders", wav("take.wav", seconds=0.5),
+                                    headers={"X-Project-At": repr(project_made),
+                                             "X-Rendered-At": repr(bounced)})
+    assert status == 200, arrived
+    render = arrived["render"]
+    assert abs(render["project_at"] - project_made) < 1
+    assert abs(render["rendered_at"] - bounced) < 1
+    assert render["created_at"] > render["rendered_at"], "the row is younger than the bounce"
+
+
+def test_a_date_that_cannot_be_true_is_dropped_rather_than_shown(server, wav):
+    """A clock rather than a date. A machine with its time unset sends 1970, and a wrong
+    date shown confidently is worse than the absence of one."""
+    for bad in ("", "not a number", "0", "-1", "99999999999"):
+        status, arrived = server.upload(
+            "/api/renders", wav("bad-%s.wav" % abs(hash(bad)), seconds=0.4),
+            headers={"X-Project-At": bad})
+        assert status == 200
+        assert arrived["render"]["project_at"] == 0, "%r was taken as a date" % bad
+
+
+def test_taking_in_a_folder_reads_both_dates_off_the_disk(server, wav, tmp_path):
+    """Here the server does hold the files, so it does not need to be told. A bounce
+    usually lands beside the project it came out of and with the same name, which is what
+    FL does unless it is told otherwise."""
+    import os
+    import time
+
+    folder = tmp_path / "Projects"
+    folder.mkdir()
+    project = folder / "Halfway Under.flp"
+    project.write_bytes(b"FLhd not really an flp")
+    audio = folder / "Halfway Under.wav"
+    audio.write_bytes(open(wav("src.wav", seconds=0.6), "rb").read())
+
+    old = time.time() - 86400 * 400
+    os.utime(project, (old, old))
+
+    status, taken = server.post("/api/renders/ingest", {"path": str(folder)})
+    assert status == 200, taken
+    assert taken["count"] == 1, taken
+    render = taken["added"][0]
+    assert abs(render["project_at"] - old) < 2, "the .flp beside it was not read"
+    assert render["rendered_at"] > 0, "the audio's own date was not read"
+
+
+def test_a_render_with_no_project_beside_it_simply_has_no_project_date(server, wav, tmp_path):
+    """Zero is how this library spells "not known", and J.when draws nothing for it. A
+    made up date would be worse than a missing one."""
+    folder = tmp_path / "Loose"
+    folder.mkdir()
+    (folder / "orphan.wav").write_bytes(
+        open(wav("src2.wav", seconds=0.5), "rb").read())
+
+    _, taken = server.post("/api/renders/ingest", {"path": str(folder)})
+    assert taken["added"][0]["project_at"] == 0
+    assert taken["added"][0]["rendered_at"] > 0, "the audio still has its own date"
+
+
+def test_the_same_bytes_arriving_again_can_teach_a_date_but_never_move_one(server, wav):
+    """A file taken in from a folder has no project behind it; the same bytes sent later
+    by the FL client do. The row should grow more accurate. What it must not do is let a
+    re-import overwrite a date that was already right."""
+    import time
+
+    audio = wav("same.wav", seconds=0.7)
+    first = time.time() - 86400 * 10
+
+    _, one = server.upload("/api/renders", audio)
+    assert one["render"]["project_at"] == 0
+
+    _, two = server.upload("/api/renders", audio,
+                           headers={"X-Project-At": repr(first)})
+    assert two["added"] is False, "the same bytes should still be one render"
+    assert abs(two["render"]["project_at"] - first) < 1, "it never learned the date"
+
+    later = time.time() - 60
+    _, three = server.upload("/api/renders", audio,
+                             headers={"X-Project-At": repr(later)})
+    assert abs(three["render"]["project_at"] - first) < 1, \
+        "a later arrival moved a date that was already known"

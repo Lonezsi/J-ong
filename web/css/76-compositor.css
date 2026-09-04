@@ -249,7 +249,10 @@
 /* The card lights up when its section is the one playing. */
 .lyric-card.sounding {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent-line), 0 12px 40px rgba(84, 179, 122, 0.14);
+  /* --edge-top first: this rule replaces box-shadow outright and loads after the card's
+     own, so without it the pane loses its lit top edge exactly while it is playing. */
+  box-shadow: var(--edge-top), 0 0 0 1px var(--accent-line),
+              0 12px 40px rgba(84, 179, 122, 0.14);
 }
 
 @media (max-width: 900px) {

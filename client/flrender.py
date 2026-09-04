@@ -123,6 +123,21 @@ def _settled(path, quiet_for=4.0, timeout=1800, started=None):
     return False
 
 
+#: What each rendered file came out of, keyed by the audio path this module returned.
+#:
+#: render() still returns a bare path, because two call sites and every test treat it as
+#: one, and widening the return type to carry two dates would be a lot of blast radius
+#: for two numbers. The dates are recorded here as they are learned and read back by
+#: whoever is about to send the file. Project date comes off the original .flp rather
+#: than the staged copy, since shutil.copyfile does not carry metadata across.
+DATES = {}
+
+
+def dates_for(audio):
+    """The .flp date and the render date for a file this module produced, or zeros."""
+    return DATES.get(os.path.abspath(audio), (0.0, 0.0))
+
+
 def render(project, out_dir=None, fmt="wav", fl=None, timeout=1800, on_step=None):
     """Render one .flp. Returns the path to the audio, or raises RuntimeError.
 
@@ -179,6 +194,18 @@ def render(project, out_dir=None, fmt="wav", fl=None, timeout=1800, on_step=None
         final = os.path.join(out_dir, "%s.%s" % (stem, fmt.lower()))
         shutil.copyfile(produced, final)
         say("wrote %s" % final)
+        # Read off the original project, not the staged copy, and taking the earlier of
+        # the two times: on Windows getctime is a creation time, elsewhere it is the
+        # inode change time, which a rename bumps. A project cannot predate itself.
+        try:
+            made = min(os.path.getctime(project), os.path.getmtime(project))
+        except OSError:
+            made = 0.0
+        try:
+            bounced = os.path.getmtime(produced)
+        except OSError:
+            bounced = 0.0
+        DATES[os.path.abspath(final)] = (made, bounced)
         return final
     finally:
         shutil.rmtree(work, ignore_errors=True)

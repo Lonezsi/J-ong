@@ -82,6 +82,8 @@ J.menu = (function () {
   }
 
   const ICONS = {
+    // For a menu that is a choice rather than a list of actions: sorting, mostly.
+    check: '<path d="M4 12.5l5 5L20 6.5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
     play: '<path d="M8 5.5l11 6.5-11 6.5z" fill="currentColor"/>',
     open: '<path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
     add: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',

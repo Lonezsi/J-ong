@@ -36,6 +36,27 @@ J.blockSound = async function (panel, ctx) {
   let editor = null;
   let limiterView = null;
 
+  /* Both shut to begin with.
+   *
+   * A frequency curve and a limiter opened to full height every time a song did, which
+   * put the thing you came for, the renders and the words, below the fold behind two
+   * instruments most visits never touch. They are one press away and they remember
+   * whether you left them open, per browser, because that is a convenience rather than
+   * anything the library should hold. */
+  const FOLD_KEY = "jong.sound.open";
+  let open = { eq: false, limiter: false };
+  try {
+    const kept = JSON.parse(localStorage.getItem(FOLD_KEY) || "null");
+    if (kept && typeof kept === "object") open = { eq: !!kept.eq, limiter: !!kept.limiter };
+  } catch (e) { /* a private window, or nothing stored: the default stands */ }
+  const remember = () => {
+    try { localStorage.setItem(FOLD_KEY, JSON.stringify(open)); } catch (e) { /* fine */ }
+  };
+
+  const chevron = (isOpen) => `<svg class="fold-mark ${isOpen ? "open" : ""}" viewBox="0 0 24 24"
+      width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
+      stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>`;
+
   const save = J.debounce(async (preset) => {
     await J.try(() => J.put(`/api/sound/${preset.id}`, { data: preset.data }));
   }, 600);
@@ -44,21 +65,50 @@ J.blockSound = async function (panel, ctx) {
    * nothing else, so shaping one song never changes what another is playing. */
   const pushToPlayer = () => J.player.presetEdited(active.id, active.data);
 
+  /* The deck this panel is editing.
+   *
+   * A and B are not two views of one equaliser, they are two equalisers, and which one
+   * you are shaping is whichever is selected. Before this, the panel chose a preset on
+   * its own and then only made a sound if a deck happened to be holding that same
+   * preset, which is why it used to have to say "put this preset in A or B above to
+   * hear it": you could shape a curve at length and hear nothing at all. */
   function liveSlot() {
     const state = J.player.state;
     if (!state.song || state.song.id !== ctx.song.id) return null;
-    for (const slot of [state.active, state.active === "A" ? "B" : "A"]) {
-      const held = state.slots[slot];
-      if (held.preset && held.preset.id === active.id && held.version) return slot;
-    }
-    return null;
+    const held = state.slots[state.active];
+    return held && held.version ? state.active : null;
+  }
+
+  /* What the selected deck is playing through, if the panel can tell.
+   *
+   * Falls back to the deck's own copy when the panel has not heard of it. A preset can
+   * come into existence after this panel loaded its list: putting a take into B forks
+   * the shared preset so the two decks stop being the same equaliser, and until the list
+   * catches up the only thing that knows about the new one is the deck holding it.
+   * Without this fallback the panel quietly kept editing A while B was selected. */
+  function presetOfSelection() {
+    const slot = liveSlot();
+    if (!slot) return null;
+    const held = J.player.state.slots[slot].preset;
+    if (!held) return null;
+    return presets.find((p) => p.id === held.id) || held;
+  }
+
+  /* Choosing a preset puts it on the selected deck, rather than only changing which one
+   * is on screen. Selecting B and then choosing a curve means B has that curve. */
+  function choose(preset, { push = true } = {}) {
+    if (!preset || (active && preset.id === active.id && !push)) return;
+    active = preset;
+    const slot = liveSlot();
+    if (push && slot) J.player.set(slot, { preset });
+    draw();
   }
 
   async function load() {
     const data = await J.get(`/api/songs/${ctx.songId}/sound`);
     presets = data.presets || [];
     ctx.presets = presets;
-    active = presets.find((p) => p.is_current) || presets[0];
+    active = presetOfSelection() || presets.find((p) => p.is_current) || presets[0];
     draw();
   }
 
@@ -76,13 +126,21 @@ J.blockSound = async function (panel, ctx) {
         <span class="preset-row" id="presetRow"></span>
       </div>
 
-      <div class="eq-wrap">
+      <button class="fold-head" data-fold="eq" aria-expanded="${open.eq}">
+        ${chevron(open.eq)}
+        <h3>Equaliser</h3>
+        <span class="fold-sub">${(active.data.bands || []).length
+          ? `${(active.data.bands || []).length} band${(active.data.bands || []).length === 1 ? "" : "s"}`
+          : "flat"}${active.data.bypass ? " &middot; bypassed" : ""}</span>
+      </button>
+
+      <div class="eq-wrap" ${open.eq ? "" : "hidden"}>
         <canvas class="eq-canvas" id="eqCanvas"></canvas>
         <div class="eq-readout" id="eqReadout"></div>
         <div class="eq-hint">click to place a band &middot; drag it &middot; double click to remove</div>
       </div>
 
-      <div class="eq-toolbar">
+      <div class="eq-toolbar" ${open.eq ? "" : "hidden"}>
         <button class="btn sm" data-act="add" data-type="peaking">Bell</button>
         <button class="btn sm ghost" data-act="add" data-type="highpass">Low cut</button>
         <button class="btn sm ghost" data-act="add" data-type="lowpass">High cut</button>
@@ -96,20 +154,23 @@ J.blockSound = async function (panel, ctx) {
         <button class="pill" id="bypassPill" data-act="bypass"></button>
       </div>
 
-      <div class="band-list" id="bandList"></div>
+      <div class="band-list" id="bandList" ${open.eq ? "" : "hidden"}></div>
 
       <div class="limiter-head">
-        <h3>Limiter</h3>
+        <button class="fold-head bare" data-fold="limiter" aria-expanded="${open.limiter}">
+          ${chevron(open.limiter)}
+          <h3>Limiter</h3>
+        </button>
         <button class="switch" id="limiterSwitch" data-act="limiter-toggle"
                 aria-label="Limiter on"></button>
         <span class="grow"></span>
         <span class="limiter-nums" id="limiterNums"></span>
       </div>
-      <div class="limiter-wrap">
+      <div class="limiter-wrap" ${open.limiter ? "" : "hidden"}>
         <canvas class="limiter-canvas" id="limiterCanvas"></canvas>
         <div class="limiter-hint">drag the two lines</div>
       </div>
-      <div class="limiter-knobs" id="limiterKnobs"></div>
+      <div class="limiter-knobs" id="limiterKnobs" ${open.limiter ? "" : "hidden"}></div>
 
       <div class="row wrap" style="margin-top:var(--s5)" id="presetActions"></div>
       <p class="sound-note" id="soundNote"></p>`;
@@ -266,8 +327,10 @@ J.blockSound = async function (panel, ctx) {
     }
     const note = J.$("#soundNote", panel);
     if (note) {
+      const slot = liveSlot();
       note.textContent = "Playback only. Your uploaded render is never modified."
-        + (liveSlot() ? "" : " Put this preset in A or B above to hear it.");
+        + (slot ? ` You are shaping ${slot}.`
+                : " Play this song to hear what you are shaping.");
     }
     const sw = J.$("#limiterSwitch", panel);
     if (sw) sw.classList.toggle("on", !!(active.data.limiter || {}).on);
@@ -292,7 +355,10 @@ J.blockSound = async function (panel, ctx) {
     });
     const chosen = J.$("[data-range].on", panel);
     editor.setRange(chosen ? Number(chosen.dataset.range) : 18);
-    editor.start();
+    // Folded away, it is a canvas nobody can see: measuring zero and animating it
+    // sixty times a second is work with no output. It reads its own size on the
+    // first frame after starting, so being started late costs nothing.
+    if (open.eq) editor.start();
   }
 
   function mountLimiter() {
@@ -313,7 +379,7 @@ J.blockSound = async function (panel, ctx) {
         showLimiterNumbers();
       },
     });
-    limiterView.start();
+    if (open.limiter) limiterView.start();
     showLimiterNumbers();
   }
 
@@ -424,7 +490,15 @@ J.blockSound = async function (panel, ctx) {
   panel.addEventListener("click", async (e) => {
     const presetTab = e.target.closest("[data-preset]");
     if (presetTab) {
-      active = presets.find((p) => String(p.id) === presetTab.dataset.preset);
+      choose(presets.find((p) => String(p.id) === presetTab.dataset.preset));
+      return;
+    }
+
+    const fold = e.target.closest("[data-fold]");
+    if (fold) {
+      const which = fold.dataset.fold;
+      open[which] = !open[which];
+      remember();
       draw();
       return;
     }
@@ -534,6 +608,27 @@ J.blockSound = async function (panel, ctx) {
       range.style.setProperty("--fill", `${((active.data.gain + 12) / 24) * 100}%`);
       pushToPlayer(); save(active);
     }
+  });
+
+  /* The panel follows the selection rather than holding one of its own.
+   *
+   * Pressing B in the player, or on the song, changes what is being shaped here. Redrawn
+   * only when the preset behind the selection actually differs, because this fires on
+   * every play, pause and seek and rebuilding the panel under a pointer throws the
+   * canvas away mid drag. */
+  J.on("player:change", function follow() {
+    if (!panel.isConnected) { J.bus.removeEventListener("player:change", follow); return; }
+    if (!presets.length) return;
+    const theirs = presetOfSelection();
+    if (theirs && active && theirs.id !== active.id) choose(theirs, { push: false });
+    else syncChrome();
+  });
+
+  /* A preset came or went somewhere else on the page. Reload rather than patch: the list
+   * is small and guessing which end of it moved is how a stale tab row happens. */
+  J.on("sound:change", function refresh() {
+    if (!panel.isConnected) { J.bus.removeEventListener("sound:change", refresh); return; }
+    load();
   });
 
   await load();

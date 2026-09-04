@@ -4,6 +4,19 @@
 J.views.album = {
   title: "Album",
   async render(root, params) {
+    /* An album's order IS the album: it is the sequence somebody sat down and chose, and
+     * the track numbers are drawn from it. So the running order is the default and the
+     * only one that numbers its rows; the rest are for finding a song on a long record,
+     * not for replacing the record's shape. */
+    const SORTS = [
+      { key: "order", label: "The album's order" },
+      { key: "title", label: "Title", dir: "up", by: (s) => s.title },
+      { key: "length", label: "Length", dir: "down", numeric: true, by: (s) => s.duration },
+      { key: "touched", label: "Recently touched", dir: "down", numeric: true,
+        by: (s) => s.updated_at },
+    ];
+    const ordered = () => J.sort.of(`album:${params.id}`, SORTS).key === "order";
+
     const data = await J.get(`/api/albums/${params.id}`);
     const album = data.album;
     const songs = data.songs || [];
@@ -37,9 +50,19 @@ J.views.album = {
 
       <div class="section" style="margin-top:var(--s3)">
         ${songs.length ? `
+          <div class="section-head bare">
+            <span class="grow"></span>
+            ${J.sort.control(`album:${params.id}`, SORTS)}
+          </div>
           <div class="tracks">
-            ${songs.map((song, i) => J.trackRow(song, { index: i, sub: song.latest_version
-              ? `v${song.latest_version}` : "no renders yet" })).join("")}
+            ${J.sort.apply(songs, `album:${params.id}`, SORTS)
+              .map((song, i) => J.trackRow(song, {
+                // The number is the album's own track number, not a row count, so a list
+                // being looked at in another order does not claim the fourth song is
+                // track one. Only the running order numbers its rows.
+                index: ordered() ? i : undefined,
+                sub: song.latest_version ? `v${song.latest_version}` : "no renders yet",
+              })).join("")}
           </div>`
           : `<div class="empty"><h3>Nothing on this album yet</h3>
                <p>Add songs and drag them into the order you want.</p></div>`}
@@ -48,6 +71,7 @@ J.views.album = {
       <input type="file" id="coverPick" accept="image/*" hidden>`;
 
     J.wireTracks(root, songs);
+    J.sort.wire(root, `album:${params.id}`, SORTS, () => J.router.reload());
 
     root.addEventListener("click", async (e) => {
       const act = e.target.closest("[data-act]");

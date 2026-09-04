@@ -217,3 +217,7 @@
   .start-here { padding: var(--s5) var(--s4); }
   .steps { gap: var(--s4); }
 }
+
+/* A section head carrying only a control. The album's track list has no title of its
+   own, because the album's title is already the page. */
+.section-head.bare { margin-bottom: var(--s2); min-height: 0; }

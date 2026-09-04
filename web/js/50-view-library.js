@@ -182,6 +182,33 @@ async function deleteSong(song) {
   J.router.reload();
 }
 
+/* The two lists on this page.
+ *
+ * Recently touched first for songs, because the library is a workbench before it is a
+ * catalogue and the thing you had open yesterday is the thing you want today. Albums
+ * keep the order the server gives them, newest year first, since an album's year is the
+ * closest thing it has to a place in a sequence. */
+const SONG_SORTS = [
+  { key: "touched", label: "Recently touched", dir: "down", numeric: true,
+    by: (s) => s.updated_at },
+  { key: "started", label: "When it was started", dir: "down", numeric: true,
+    by: (s) => s.created_at },
+  { key: "title", label: "Title", dir: "up", by: (s) => s.title },
+  { key: "renders", label: "How many renders", dir: "down", numeric: true,
+    by: (s) => s.version_count },
+  { key: "length", label: "Length", dir: "down", numeric: true, by: (s) => s.duration },
+];
+
+const ALBUM_SORTS = [
+  { key: "year", label: "Year", dir: "down", numeric: true, by: (a) => a.year },
+  { key: "title", label: "Title", dir: "up", by: (a) => a.title },
+  { key: "songs", label: "How many songs", dir: "down", numeric: true,
+    by: (a) => a.song_count },
+  { key: "length", label: "Length", dir: "down", numeric: true, by: (a) => a.duration },
+  { key: "made", label: "When it was made", dir: "down", numeric: true,
+    by: (a) => a.created_at },
+];
+
 J.views.library = {
   title: "Library",
   async render(root, params) {
@@ -259,9 +286,10 @@ J.views.library = {
       ${albums.length && !term ? `
         <div class="section">
           <div class="section-head"><h2>Albums</h2><span class="grow"></span>
+            ${J.sort.control("albums", ALBUM_SORTS)}
             <button class="btn sm ghost" data-new-album>New album</button></div>
           <div class="card-grid">
-            ${albums.map((album) => `
+            ${J.sort.apply(albums, "albums", ALBUM_SORTS).map((album) => `
               <div class="album-card" data-album="${album.id}" tabindex="0" role="button">
                 ${J.cover({
                   url: album.has_cover ? `/api/albums/${album.id}/cover` : null,
@@ -275,16 +303,22 @@ J.views.library = {
 
       <div class="section">
         <div class="section-head"><h2>${heading}</h2><span class="grow"></span>
+          ${J.sort.control("songs", SONG_SORTS)}
           <button class="btn sm ghost" data-new-song>New song</button></div>
         ${songs.length ? `
           <div class="track-head eyebrow">
             <span></span><span>Title</span><span>Latest</span><span>Length</span>
           </div>
-          <div class="tracks">${songs.map((s) => J.trackRow(s)).join("")}</div>`
+          <div class="tracks">${J.sort.apply(songs, "songs", SONG_SORTS)
+            .map((s) => J.trackRow(s)).join("")}</div>`
           : `<div class="empty"><h3>No songs match that</h3><p>Try a shorter search.</p></div>`}
       </div>`;
 
     wire(root, songs);
+    // Re-rendering the whole view keeps the row wiring and the sorted markup in step;
+    // patching one list in place would leave wire()'s closure pointing at the old rows.
+    J.sort.wire(root, "songs", SONG_SORTS, () => J.router.reload());
+    J.sort.wire(root, "albums", ALBUM_SORTS, () => J.router.reload());
   },
 };
 

@@ -192,3 +192,28 @@
   .q-knob { width: 42px; height: 42px; }
   .q-knob svg { width: 42px; height: 42px; }
 }
+
+/* Folded sections.
+ *
+ * The whole head is the control, because a chevron on its own is a five pixel target and
+ * the words next to it are the thing the eye goes to anyway. The limiter's head already
+ * carries its on/off switch, so there the fold is only the chevron and the word, and the
+ * switch stays a separate press: turning a limiter on and looking at one are different
+ * intentions and must not share a target. */
+.fold-head {
+  display: flex; align-items: center; gap: var(--s2);
+  width: 100%; padding: var(--s3) 0; margin: 0;
+  background: none; border: 0; color: var(--text);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.fold-head.bare { width: auto; padding-right: var(--s2); }
+.fold-head h3 { margin: 0; font-size: 13.5px; font-weight: 700; letter-spacing: 0.01em; }
+.fold-head:hover h3 { color: var(--accent-hi); }
+.fold-head:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; border-radius: var(--r-sm); }
+
+.fold-mark { flex: none; color: var(--text-3); transition: transform var(--fast), color var(--fast); }
+.fold-mark.open { transform: rotate(90deg); color: var(--accent); }
+.fold-head:hover .fold-mark { color: var(--accent-hi); }
+
+/* What is inside, without opening it. */
+.fold-sub { margin-left: auto; font-size: 12px; color: var(--text-3); }

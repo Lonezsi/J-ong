@@ -195,18 +195,26 @@ J.player = (function () {
     const art = state.song.artwork_id ? `/api/artwork/${state.song.artwork_id}/image` : null;
     const hasB = !!state.slots.B.version || arranged();
 
+    // The whole block leads somewhere, cover and words alike, rather than only the title.
+    // A loose render has no song page: its id is "render:<n>", and the title used to link
+    // to #/song/render:43, which is a dead end dressed as a link. It goes to the list it
+    // actually lives in instead.
+    const loose = state.song.kind === "render";
+    const goes = loose ? "#/renders" : `#/song/${state.song.id}`;
+
     node.innerHTML = `
-      <div class="now-playing">
+      <a class="now-playing" href="${goes}" data-link title="${
+        loose ? "Show this in the renders list" : "Open the song"}">
         ${J.cover({ url: art, title: state.song.title })}
         <div class="truncate">
-          <div class="t truncate"><a href="#/song/${state.song.id}" data-link>${J.esc(state.song.title)}</a></div>
+          <div class="t truncate">${J.esc(state.song.title)}</div>
           <div class="s truncate">${
             !version ? "no version"
               : version.kind === "render" ? "a render, not yet on a song"
               : `v${version.n}`}${
             slot.preset ? ` &middot; ${J.esc(slot.preset.name)}` : ""}</div>
         </div>
-      </div>
+      </a>
 
       <div class="transport">
         <div class="transport-row">

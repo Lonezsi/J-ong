@@ -99,7 +99,7 @@ J.blockLyrics = async function (block, ctx) {
 
     if (!sheets.length) {
       track.style.transform = "translate3d(0,0,0)";
-      track.innerHTML = `<article class="lyric-card"><div class="card-body empty-words"
+      track.innerHTML = `<article class="lyric-card on"><div class="card-body empty-words"
         data-act="edit">Click here and write. The first line becomes the title, and a
         song can hold several sets of words at once so a rewrite never overwrites the
         one you had.</div></article>`;
@@ -204,24 +204,32 @@ J.blockLyrics = async function (block, ctx) {
     setTimeout(() => { if (block.isConnected) draw(); }, 320);
   }
 
-  /* Dragging. The track follows the pointer and settles either back or onward. */
+  /* Dragging. The track follows the pointer and settles either back or onward.
+   *
+   * Bound to the block, not to the window inside it. draw() rewrites block.innerHTML, so
+   * #deckWindow is a different element after every redraw and anything held on the old
+   * one goes in the bin with it. Changing card schedules exactly that redraw, which is
+   * why swiping used to work once and then never again: the arrows, the dots and the
+   * keyboard kept working because they are delegated here, and only the drag was not. */
   function wireDrag() {
-    const win = J.$("#deckWindow", block);
-    const track = J.$("#deckTrack", block);
-    if (!win || !track) return;
     let startX = 0, startY = 0, dragging = false, decided = false, width = 1;
+    let win = null, track = null;
 
-    win.addEventListener("pointerdown", (e) => {
+    block.addEventListener("pointerdown", (e) => {
       if (editing || sheets.length < 2) return;
       if (e.target.closest("a, button, textarea")) return;
+      // Resolved per gesture, because the element that was there last time is gone.
+      win = e.target.closest("#deckWindow");
+      track = win && J.$("#deckTrack", block);
+      if (!win || !track) { win = track = null; return; }
       dragging = true; decided = false;
       startX = e.clientX; startY = e.clientY;
       width = win.getBoundingClientRect().width || 1;
       track.style.transition = "none";
     });
 
-    win.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
+    block.addEventListener("pointermove", (e) => {
+      if (!dragging || !track) return;
       const dx = e.clientX - startX;
       const dy = e.clientY - startY;
       if (!decided) {
@@ -229,7 +237,7 @@ J.blockLyrics = async function (block, ctx) {
         if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) { dragging = false; return; }
         if (Math.abs(dx) < 6) return;
         decided = true;
-        win.setPointerCapture(e.pointerId);
+        try { win.setPointerCapture(e.pointerId); } catch (err) { /* gone already */ }
       }
       // Resist at the ends, so the deck feels like it has edges.
       const edge = (at === 0 && dx > 0) || (at === sheets.length - 1 && dx < 0);
@@ -240,14 +248,16 @@ J.blockLyrics = async function (block, ctx) {
     const release = (e) => {
       if (!dragging) return;
       dragging = false;
+      const held = win;
+      win = track = null;
       if (!decided) return;
-      try { win.releasePointerCapture(e.pointerId); } catch (err) { /* already */ }
+      try { held.releasePointerCapture(e.pointerId); } catch (err) { /* already */ }
       const dx = e.clientX - startX;
       if (Math.abs(dx) > width * 0.28) go(at + (dx < 0 ? 1 : -1));
       else place(true);
     };
-    win.addEventListener("pointerup", release);
-    win.addEventListener("pointercancel", release);
+    block.addEventListener("pointerup", release);
+    block.addEventListener("pointercancel", release);
   }
 
   async function save() {

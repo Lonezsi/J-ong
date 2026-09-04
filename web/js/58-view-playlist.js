@@ -21,8 +21,24 @@ J.views.playlist = {
       draw();
     }
 
-    /* Everything the player needs, whichever kind it is. */
-    const queueOf = () => (playlist.items || []).map((item) => (item.kind === "song"
+    /* A running order is a sequence somebody chose, so that is what it opens as. The
+     * other orders are there for finding something in a long one, not for replacing it,
+     * which is why "the running order" is first and is the only one with no direction to
+     * reverse: back to front is a different thing, not a sort. */
+    const SORTS = [
+      { key: "order", label: "The running order" },
+      { key: "title", label: "Title", dir: "up", by: (i) => i.title },
+      { key: "kind", label: "Songs and renders apart", dir: "up", by: (i) => i.kind },
+      { key: "length", label: "Length", dir: "down", numeric: true,
+        by: (i) => (i.song ? i.song.duration : i.render.duration) },
+    ];
+
+    const shown = () => J.sort.apply(playlist.items || [], `playlist:${params.id}`, SORTS);
+
+    /* Everything the player needs, whichever kind it is. Built from what is on screen,
+     * so pressing the third row plays the third row: the queue used to come from the
+     * unsorted array and a sorted list would have played something else entirely. */
+    const queueOf = () => shown().map((item) => (item.kind === "song"
       ? { kind: "song", id: item.song.id, song: item.song }
       : { kind: "render", id: item.render.id, render: item.render }));
 
@@ -71,13 +87,14 @@ J.views.playlist = {
             <h2>${J.esc(playlist.title)}</h2>
             ${playlist.album_id ? '<span class="tag">an album</span>' : ""}
             <span class="grow"></span>
+            ${playlist.count ? J.sort.control(`playlist:${params.id}`, SORTS) : ""}
             <button class="btn sm primary" data-act="play"
                     ${playlist.count ? "" : "disabled"}>Play</button>
             ${owned ? '<button class="btn sm ghost" data-act="rename">Rename</button>' : ""}
           </div>
 
           ${playlist.count ? `<div class="tracks">
-            ${playlist.items.map(row).join("")}
+            ${shown().map(row).join("")}
           </div>` : `
             <div class="empty">
               <h3>Nothing in it yet</h3>
@@ -109,7 +126,7 @@ J.views.playlist = {
     });
 
     J.menu.on(root, "[data-item]", (node) => {
-      const item = playlist.items.find((i) => String(i.item_id) === node.dataset.item);
+      const item = (playlist.items || []).find((i) => String(i.item_id) === node.dataset.item);
       if (!item) return null;
       return [
         { label: "Play from here", icon: "play",
@@ -134,6 +151,8 @@ J.views.playlist = {
       if (!root.isConnected) { J.bus.removeEventListener("player:change", follow); return; }
       if (playlist) draw();
     });
+
+    J.sort.wire(root, `playlist:${params.id}`, SORTS, draw);
 
     await load();
   },

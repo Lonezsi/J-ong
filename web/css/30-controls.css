@@ -242,3 +242,20 @@ textarea.field { min-height: 120px; resize: vertical; line-height: 1.7; }
   color: var(--text-2);
   text-transform: uppercase;
 }
+
+/* The sort control.
+ *
+ * A button that says what the list is in order by, not what pressing it will do, because
+ * a list's order is a state you read at a glance far more often than you change it. The
+ * arrow is the direction, and it is absent entirely for an order that cannot be
+ * reversed: a running order somebody chose has a right way round and no other. */
+.sort-pick { gap: 6px; }
+.sort-pick .sort-mark { flex: none; color: var(--text-3); transition: transform var(--fast); }
+.sort-pick:hover .sort-mark { color: var(--accent-hi); }
+.sort-pick .sort-mark.down { transform: scaleY(-1); }
+.sort-pick span { white-space: nowrap; }
+
+/* On a phone the label goes and the icon stays: the menu says the rest. */
+@media (max-width: 560px) {
+  .sort-pick span { display: none; }
+}

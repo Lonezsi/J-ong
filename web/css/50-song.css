@@ -257,7 +257,16 @@
   font-family: var(--display); font-weight: 800; font-size: 11px;
 }
 .slot-pick .v { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.slot-pick .caret { opacity: 0.45; flex: none; }
+/* Two targets in one chip: the chip chooses the deck, the caret opens its menu. A
+   13px arrow is not something to aim at, so the box around it is padded out to a real
+   size and only the arrow inside it is drawn. */
+.slot-pick .caret {
+  opacity: 0.45; flex: none;
+  box-sizing: content-box;
+  padding: 6px 4px 6px 6px; margin: -6px -2px -6px 0;
+  border-radius: var(--r-sm);
+}
+.slot-pick .caret:hover { opacity: 1; background: var(--hover); }
 /* The side you are actually hearing. */
 .slot-pick.live { border-color: var(--accent); background: var(--accent-soft); }
 .slot-pick.live .k { background: var(--accent); color: var(--text-on-accent); }
@@ -345,13 +354,27 @@
 }
 .deck-track { display: flex; will-change: transform; }
 
+/* Glass, over the song's own wash.
+ *
+ * Eighty percent transparent, so what is behind is most of what you see, and then the
+ * same refraction the rail and the player use: url(#glass) is feTurbulence driving an
+ * feDisplacementMap, which pushes the backdrop sideways as it passes rather than only
+ * softening it. Blurring is what distance does; bending is what glass does.
+ *
+ * The card keeps its own colour rather than the white tint the chrome uses, because the
+ * chrome floats over the library and this floats over one song's artwork, and a white
+ * veil over that would wash the colour out of the thing it is meant to be showing. */
 .lyric-card {
   flex: 0 0 100%;
   min-width: 100%;
   padding: var(--s6);
   border-radius: var(--r-lg);
-  background: var(--surface-2);
-  border: 1px solid var(--line);
+  background: rgba(18, 18, 20, 0.2);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--edge-top), var(--glass-shadow);
+  isolation: isolate;
   opacity: 0.55;
   transform: scale(0.985);
   transition: opacity var(--med), transform var(--med);
@@ -390,15 +413,20 @@
 }
 .card-body blockquote p { margin: 0; }
 .card-body hr { border: 0; border-top: 1px solid var(--line-2); margin: var(--s4) 0; }
+/* Translucent, not black. On a glass card an opaque pill reads as a hole punched
+   through it, which is the one thing that gives the effect away. */
 .card-body code {
-  font-size: 0.9em; background: var(--bg); padding: 1px 5px; border-radius: var(--r-sm);
+  font-size: 0.9em; background: rgba(0, 0, 0, 0.38); padding: 1px 5px;
+  border-radius: var(--r-sm);
 }
 .card-body a { color: var(--accent-hi); text-decoration: underline; }
 
 textarea.card-edit {
   width: 100%; min-height: 340px;
   font: inherit; font-size: 16px; line-height: 1.85;
-  background: var(--bg);
+  /* Darker than the card it sits in, so the writing area is obvious, but still not a
+     solid black rectangle dropped onto a pane of glass. */
+  background: rgba(0, 0, 0, 0.45);
   border: 1px solid var(--accent-line);
   border-radius: var(--r-md);
   padding: var(--s4);

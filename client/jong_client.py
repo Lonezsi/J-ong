@@ -338,10 +338,17 @@ def send_render(cfg, server, path):
     and wait there until they are told.
     """
     name = os.path.basename(path)
+    # The server has no file to look at on this path: the bytes come off the request
+    # body and the project is on this machine. If these two dates do not ride along as
+    # headers, they do not exist for an FL render at all.
+    made, bounced = flrender.dates_for(path)
+    headers = {"X-Filename": name, "X-Source-Path": path, "X-Origin": "fl"}
+    if made:
+        headers["X-Project-At"] = repr(made)
+    if bounced:
+        headers["X-Rendered-At"] = repr(bounced)
     try:
-        result = server.upload("/api/renders", path,
-                               {"X-Filename": name, "X-Source-Path": path,
-                                "X-Origin": "fl"})
+        result = server.upload("/api/renders", path, headers)
     except Exception as e:
         print("  could not send %s: %s" % (name, e))
         return False
