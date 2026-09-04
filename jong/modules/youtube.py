@@ -181,18 +181,70 @@ def _post_form(url, fields):
         raise Error("Google could not be reached: %s" % e.reason, 502)
 
 
-def account_state(req):
-    """Whether an account is connected, without ever handing back the credential."""
+def _all():
+    """Every account, and which one is chosen.
+
+    Kept as a map rather than one record because a person has more than one channel:
+    their own, the band's, an alias. Choosing between them at upload time is the whole
+    point, and a single slot meant disconnecting one to use another.
+
+    An older file holding a single account is folded in on read, so nothing has to be
+    reconnected.
+    """
     held = _account()
-    return {"connected": bool(held.get("refresh_token")),
-            "channel": held.get("channel"),
-            "connected_at": held.get("connected_at"),
-            # Said here as well as on the page, because it changes what "public" means.
-            "unaudited": True}
+    if "accounts" not in held and held.get("refresh_token"):
+        # The shape before there could be more than one.
+        moved = dict(held)
+        moved["name"] = moved.get("channel") or "your channel"
+        held = {"accounts": {"first": moved}, "chosen": "first"}
+        _save_account(held)
+    held.setdefault("accounts", {})
+    return held
+
+
+def _chosen():
+    held = _all()
+    at = held.get("chosen")
+    if at and at in held["accounts"]:
+        return at, held["accounts"][at]
+    # One account and nothing chosen is not an ambiguity worth an error.
+    if len(held["accounts"]) == 1:
+        only = next(iter(held["accounts"]))
+        return only, held["accounts"][only]
+    return None, None
+
+
+def _public(entry):
+    """What the browser is allowed to know. Never the secret, never the tokens."""
+    return {"name": entry.get("name") or entry.get("channel") or "a channel",
+            "channel": entry.get("channel"),
+            "connected_at": entry.get("connected_at")}
+
+
+def account_state(req):
+    held = _all()
+    at, _ = _chosen()
+    return {
+        "accounts": [dict(_public(v), id=k) for k, v in sorted(held["accounts"].items())],
+        "chosen": at,
+        "connected": bool(held["accounts"]),
+        # Said here as well as on the page, because it changes what "public" means.
+        "unaudited": True,
+    }
+
+
+def choose_account(req):
+    held = _all()
+    want = need(req.json(), "id")
+    if want not in held["accounts"]:
+        raise Error("no account with id %s" % want, 404)
+    held["chosen"] = want
+    _save_account(held)
+    return account_state(req)
 
 
 def connect(req):
-    """Start the sign in. Returns the code to type into google.com."""
+    """Start signing in another account. Returns the code to type into google.com."""
     data = req.json()
     client_id = need(data, "client_id").strip()
     client_secret = need(data, "client_secret").strip()
@@ -200,12 +252,15 @@ def connect(req):
     said = _post_form(DEVICE_URL, {"client_id": client_id, "scope": SCOPE})
     if "device_code" not in said:
         raise Error("Google refused those credentials: %s"
-                    % said.get("error_description") or said.get("error", "no reason given"))
+                    % (said.get("error_description") or said.get("error", "no reason given")))
 
-    # Kept only until the sign in finishes or is abandoned.
-    _save_account({"client_id": client_id, "client_secret": client_secret,
-                   "device_code": said["device_code"], "started_at": time.time(),
-                   "interval": said.get("interval", 5)})
+    held = _all()
+    # Held apart from the accounts until it completes, so a sign in that is abandoned
+    # halfway leaves the ones that already work alone.
+    held["pending"] = {"client_id": client_id, "client_secret": client_secret,
+                       "device_code": said["device_code"], "started_at": time.time(),
+                       "name": (data.get("name") or "").strip()}
+    _save_account(held)
     return {"user_code": said.get("user_code"),
             "verification_url": said.get("verification_url")
                                 or said.get("verification_uri"),
@@ -213,14 +268,15 @@ def connect(req):
 
 
 def finish(req):
-    """Exchange the device code for a refresh token, once the person has typed it in."""
-    held = _account()
-    if not held.get("device_code"):
+    """Exchange the device code for a refresh token, once the code has been entered."""
+    held = _all()
+    waiting = held.get("pending")
+    if not waiting:
         raise Error("Nothing is waiting to be connected. Start again.")
 
     said = _post_form(TOKEN_URL, {
-        "client_id": held["client_id"], "client_secret": held["client_secret"],
-        "device_code": held["device_code"],
+        "client_id": waiting["client_id"], "client_secret": waiting["client_secret"],
+        "device_code": waiting["device_code"],
         "grant_type": "urn:ietf:params:oauth:grant-type:device_code"})
 
     if said.get("error") == "authorization_pending":
@@ -229,14 +285,24 @@ def finish(req):
         raise Error("That did not complete: %s"
                     % (said.get("error_description") or said.get("error", "no reason")))
 
-    held.pop("device_code", None)
-    held["refresh_token"] = said["refresh_token"]
-    held["access_token"] = said.get("access_token")
-    held["expires_at"] = time.time() + said.get("expires_in", 3600) - 60
-    held["connected_at"] = time.time()
-    held["channel"] = _channel_name(held.get("access_token"))
+    channel = _channel_name(said.get("access_token"))
+    entry = {
+        "client_id": waiting["client_id"], "client_secret": waiting["client_secret"],
+        "refresh_token": said["refresh_token"],
+        "access_token": said.get("access_token"),
+        "expires_at": time.time() + said.get("expires_in", 3600) - 60,
+        "connected_at": time.time(),
+        "channel": channel,
+        "name": waiting.get("name") or channel or "a channel",
+    }
+    # Keyed by the channel where there is one, so signing the same channel in twice
+    # replaces it rather than leaving two entries that look identical.
+    key = (channel or ("account-%d" % int(time.time()))).lower().replace(" ", "-")[:60]
+    held["accounts"][key] = entry
+    held["chosen"] = key
+    held.pop("pending", None)
     _save_account(held)
-    return {"connected": True, "channel": held.get("channel")}
+    return {"connected": True, "channel": channel, "id": key}
 
 
 def _channel_name(access_token):
@@ -253,32 +319,42 @@ def _channel_name(access_token):
 
 
 def _access_token():
-    """A live token, refreshed if the one we hold has expired."""
-    held = _account()
-    if not held.get("refresh_token"):
-        raise Error("No YouTube account is connected.", 409)
-    if held.get("access_token") and held.get("expires_at", 0) > time.time():
-        return held["access_token"]
+    """A live token for the chosen account, refreshed if the one held has expired."""
+    held = _all()
+    at, entry = _chosen()
+    if not entry:
+        raise Error("No YouTube account is chosen.", 409)
+    if entry.get("access_token") and entry.get("expires_at", 0) > time.time():
+        return entry["access_token"]
 
     said = _post_form(TOKEN_URL, {
-        "client_id": held["client_id"], "client_secret": held["client_secret"],
-        "refresh_token": held["refresh_token"], "grant_type": "refresh_token"})
+        "client_id": entry["client_id"], "client_secret": entry["client_secret"],
+        "refresh_token": entry["refresh_token"], "grant_type": "refresh_token"})
     if "access_token" not in said:
-        raise Error("The YouTube account needs connecting again: %s"
+        raise Error("That account needs connecting again: %s"
                     % (said.get("error_description") or said.get("error", "no reason")), 401)
-    held["access_token"] = said["access_token"]
-    held["expires_at"] = time.time() + said.get("expires_in", 3600) - 60
+    entry["access_token"] = said["access_token"]
+    entry["expires_at"] = time.time() + said.get("expires_in", 3600) - 60
+    held["accounts"][at] = entry
     _save_account(held)
-    return held["access_token"]
+    return entry["access_token"]
 
 
 def disconnect(req):
-    """Forget the account. Nothing already uploaded is touched."""
-    try:
-        os.remove(_account_path())
-    except OSError:
-        pass
-    return {"connected": False}
+    """Forget one account. Nothing already uploaded is touched."""
+    held = _all()
+    want = req.params.get("id")
+    if want:
+        held["accounts"].pop(want, None)
+        if held.get("chosen") == want:
+            held["chosen"] = next(iter(held["accounts"]), None)
+        _save_account(held)
+    else:
+        try:
+            os.remove(_account_path())
+        except OSError:
+            pass
+    return account_state(req)
 
 
 def SUMMARY():
@@ -296,4 +372,6 @@ def ROUTES():
         ("POST", "/api/youtube/connect"): connect,
         ("POST", "/api/youtube/finish"): finish,
         ("DELETE", "/api/youtube/account"): disconnect,
+        ("DELETE", "/api/youtube/account/<id>"): disconnect,
+        ("POST", "/api/youtube/account/choose"): choose_account,
     }

@@ -114,3 +114,77 @@
   font: inherit; color: var(--accent-hi);
   text-decoration: underline; cursor: pointer;
 }
+
+/* A card head that carries a control as well as a title. */
+.yt-card-head { display: flex; align-items: center; gap: var(--s3); }
+.yt-card-head h2 { margin: 0; }
+
+/* The compositor, mounted open rather than hanging off a button. */
+.yt-comp { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+
+/* Visibility as three pills rather than a dropdown.
+ *
+ * A dropdown shows the chosen one and hides what the other two would mean. These are the
+ * three states a video can be in for as long as it exists, so all three say what they do
+ * and the chosen one is obvious without opening anything. */
+.yt-privacy { display: grid; gap: var(--s2); }
+.yt-privacy-label {
+  font-size: 12px; color: var(--text-2);
+  letter-spacing: 0.02em;
+}
+.yt-pills { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.yt-pill {
+  flex: 1 1 140px;
+  display: grid; gap: 1px;
+  padding: var(--s3) var(--s4);
+  text-align: left;
+  background: var(--grad-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--text-2);
+  font: inherit; cursor: pointer;
+  transition: border-color var(--fast), background var(--fast), color var(--fast);
+}
+.yt-pill .t { font-weight: 700; font-size: 13.5px; }
+.yt-pill .s { font-size: 11.5px; color: var(--text-3); }
+.yt-pill:hover { border-color: var(--line-2); color: var(--text); }
+.yt-pill.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.yt-pill.on .t { color: var(--accent-hi); }
+.yt-pill:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+
+/* The accounts, as a list you choose from rather than one slot you overwrite. */
+.yt-accounts { display: grid; gap: var(--s2); }
+.yt-account {
+  display: flex; align-items: center; gap: var(--s3);
+  width: 100%; padding: var(--s3);
+  background: var(--grad-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  transition: border-color var(--fast), background var(--fast);
+}
+.yt-account:hover { border-color: var(--line-2); }
+.yt-account.on { border-color: var(--accent); background: var(--accent-soft); }
+.yt-account:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+.yt-account .t { display: block; font-weight: 650; font-size: 13.5px; }
+.yt-account .s { display: block; font-size: 11.5px; color: var(--text-3); }
+
+.yt-avatar {
+  flex: none; width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--elevated); color: var(--text-2);
+  font-weight: 700; font-size: 14px;
+}
+.yt-account.on .yt-avatar { background: var(--accent); color: var(--text-on-accent); }
+
+.yt-chosen, .yt-pick {
+  flex: none; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 3px 9px; border-radius: var(--r-pill);
+}
+.yt-chosen { background: var(--accent); color: var(--text-on-accent); font-weight: 700; }
+.yt-pick { border: 1px solid var(--line-2); color: var(--text-3); }
+.yt-account:hover .yt-pick { border-color: var(--accent-line); color: var(--accent-hi); }
