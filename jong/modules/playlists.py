@@ -291,6 +291,43 @@ def album_lost_song(album_id, song_id):
            (playlist["id"], song_id))
 
 
+def for_song(req):
+    """Every running order this song is in, and where in each one it sits.
+
+    The position is the point. A song that is track nine of an album is not the same
+    thing as a song that happens to be in a list: knowing where it sits is what lets the
+    page start the playlist at this song rather than at the top of it.
+
+    A song can appear twice in one order, so the position given is the first, which is
+    where you would expect pressing it to start.
+    """
+    song = songs_module().get(req.params["id"])
+    rows = db.query(
+        "SELECT p.*, MIN(i.position) AS at, COUNT(i.id) AS times "
+        "FROM playlists p JOIN playlist_items i ON i.playlist_id = p.id "
+        "WHERE i.song_id = ? GROUP BY p.id "
+        "ORDER BY p.album_id IS NULL DESC, p.title", (song["id"],))
+
+    out = []
+    for row in rows:
+        counted = db.one("SELECT COUNT(*) AS n FROM playlist_items WHERE playlist_id = ?",
+                         (row["id"],))
+        item = dict(row)
+        item["count"] = counted["n"] if counted else 0
+        # Where it sits as a person would say it: one of nine, not position 4.0.
+        ahead = db.one(
+            "SELECT COUNT(*) AS n FROM playlist_items WHERE playlist_id = ? AND position < ?",
+            (row["id"], row["at"]))
+        item["index"] = (ahead["n"] if ahead else 0)
+        out.append(item)
+    return {"playlists": out}
+
+
+def songs_module():
+    from . import songs
+    return songs
+
+
 def SUMMARY():
     total = db.one("SELECT COUNT(*) AS n FROM playlists")
     own = db.one("SELECT COUNT(*) AS n FROM playlists WHERE album_id IS NULL")
@@ -300,6 +337,7 @@ def SUMMARY():
 def ROUTES():
     return {
         ("GET", "/api/playlists"): list_playlists,
+        ("GET", "/api/songs/<id>/playlists"): for_song,
         ("POST", "/api/playlists"): create,
         ("GET", "/api/playlists/<id>"): read,
         ("PATCH", "/api/playlists/<id>"): rename,

@@ -226,3 +226,53 @@ def test_a_render_in_a_playlist_is_named_the_way_it_is_named_everywhere_else(ser
     item = got["playlist"]["items"][0]
     assert item["title"] == "vigioe"
     assert item["render"]["name"] == "vigioe", "the player reads name, and would show the file"
+
+
+def test_a_song_can_say_which_running_orders_it_is_in_and_where(server):
+    """The song page lists them and starts one at this song, so it needs the position as
+    well as the name. Without it, pressing a playlist from a song would start at track
+    one, which is almost never what was meant."""
+    playlist = a_playlist(server, "Friday")
+    first, wanted, last = (a_song(server, "One"), a_song(server, "Two"), a_song(server, "Three"))
+    for song in (first, wanted, last):
+        server.post("/api/playlists/%d/items" % playlist, {"song_id": song})
+
+    status, mine = server.get("/api/songs/%d/playlists" % wanted)
+    assert status == 200, mine
+    assert [p["title"] for p in mine["playlists"]] == ["Friday"]
+    got = mine["playlists"][0]
+    assert got["index"] == 1, "it is the second thing in it, so index 1"
+    assert got["count"] == 3
+
+
+def test_a_song_in_no_running_order_says_so_rather_than_failing(server):
+    song = a_song(server, "Alone")
+    status, mine = server.get("/api/songs/%d/playlists" % song)
+    assert status == 200
+    assert mine["playlists"] == []
+
+
+def test_an_albums_own_running_order_is_listed_for_its_songs_too(server):
+    """It is the album in another shape, and playing the album from one of its songs is
+    exactly the thing somebody would want from a song page."""
+    _, made = server.post("/api/albums", {"title": "Nights"})
+    album = made["album"]["id"]
+    song = a_song(server, "One")
+    server.post("/api/albums/%d/songs" % album, {"song_id": song})
+
+    _, mine = server.get("/api/songs/%d/playlists" % song)
+    assert [p["title"] for p in mine["playlists"]] == ["Nights"]
+    assert mine["playlists"][0]["album_id"] == album
+
+
+def test_a_song_twice_in_one_order_is_reported_once_at_its_first_place(server):
+    playlist = a_playlist(server)
+    twice, between = a_song(server, "Twice"), a_song(server, "Between")
+    server.post("/api/playlists/%d/items" % playlist, {"song_id": twice})
+    server.post("/api/playlists/%d/items" % playlist, {"song_id": between})
+    server.post("/api/playlists/%d/items" % playlist, {"song_id": twice})
+
+    _, mine = server.get("/api/songs/%d/playlists" % twice)
+    assert len(mine["playlists"]) == 1, "one playlist, however many times it is in it"
+    assert mine["playlists"][0]["index"] == 0, "pressing it should start at the first"
+    assert mine["playlists"][0]["times"] == 2

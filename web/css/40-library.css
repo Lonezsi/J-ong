@@ -221,3 +221,8 @@
 /* A section head carrying only a control. The album's track list has no title of its
    own, because the album's title is already the page. */
 .section-head.bare { margin-bottom: var(--s2); min-height: 0; }
+
+/* The albums section stays even with nothing in it, because "you have no albums" and
+   "this library does not do albums" look identical when the whole section is absent,
+   and the way to make the first one was hidden behind having one already. */
+.album-none { margin: 0 0 var(--s3); font-size: 13px; max-width: 52ch; }

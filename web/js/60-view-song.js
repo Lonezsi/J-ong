@@ -157,6 +157,8 @@ J.views.song = {
       ${has("lyrics") ? '<div class="block" id="lyricsBlock"></div>' : ""}
       ${has("sound") ? '<div class="block" id="soundBlock"></div>' : ""}
       ${has("artwork") ? '<div class="block" id="artworkBlock"></div>' : ""}
+      ${has("playlists") ? '<div class="block" id="songPlaylistsBlock"></div>' : ""}
+      ${has("youtube") ? '<div class="block" id="youtubeBlock"></div>' : ""}
 
       <div class="block">
         <div class="block-head"><h2>Song</h2><span class="grow"></span>
@@ -191,6 +193,8 @@ J.views.song = {
     if (has("lyrics")) await J.blockLyrics(J.$("#lyricsBlock", root), ctx);
     if (has("sound")) await J.blockSound(J.$("#soundBlock", root), ctx);
     if (has("artwork")) await J.blockArtwork(J.$("#artworkBlock", root), ctx);
+    if (has("playlists")) await J.blockSongPlaylists(J.$("#songPlaylistsBlock", root), ctx);
+    if (has("youtube")) await J.blockYouTube(J.$("#youtubeBlock", root), ctx);
   },
 };
 
@@ -729,14 +733,14 @@ J.blockArtwork = async function (block, ctx) {
     <div class="art-strip">
       ${ctx.artwork.map((image, i) => `
         <div class="art-tile ${i === 0 ? "is-cover" : ""}" data-image="${image.id}"
+             tabindex="0" role="button"
              title="${i === 0 ? "The cover" : "Make this the cover"}">
           <img src="/api/artwork/${image.id}/image" alt="" loading="lazy">
-          <span class="drop">
-            <button class="icon-btn" data-act="remove" aria-label="Remove"
-                    style="width:24px;height:24px">
-              <svg viewBox="0 0 24 24" width="13" height="13"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
-            </button>
-          </span>
+          ${i === 0 ? '<span class="art-badge">Cover</span>' : ""}
+          <button class="art-drop" data-act="remove" aria-label="Remove this artwork"
+                  title="Remove this artwork">
+            <svg viewBox="0 0 24 24" width="12" height="12"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+          </button>
         </div>`).join("")}
       <button class="art-add" data-act="add" aria-label="Add artwork">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
@@ -750,14 +754,47 @@ J.blockArtwork = async function (block, ctx) {
     if (!tile) return;
     const id = Number(tile.dataset.image);
     if (act && act.dataset.act === "remove") {
-      await J.try(() => J.del(`/api/artwork/${id}`), "Removed");
-      J.emit("artwork:changed", { songId: ctx.songId });
-      J.router.reload();
+      e.stopPropagation();
+      await removeArt(id);
       return;
     }
+    await makeCover(id);
+  });
+
+  async function makeCover(id) {
     const order = [id].concat(ctx.artwork.filter((i) => i.id !== id).map((i) => i.id));
     await J.try(() => J.post(`/api/songs/${ctx.songId}/artwork/order`, { order }), "Cover set");
     J.emit("artwork:changed", { songId: ctx.songId });
     J.router.reload();
+  }
+
+  async function removeArt(id) {
+    const sure = await J.confirm("Remove this artwork?",
+      "The picture goes. Nothing else about the song changes.", "Remove it");
+    if (!sure) return;
+    await J.try(() => J.del(`/api/artwork/${id}`), "Removed");
+    J.emit("artwork:changed", { songId: ctx.songId });
+    J.router.reload();
+  }
+
+  // Choosing is the click; removing is somewhere you have to mean to go.
+  J.menu.on(block, "[data-image]", (tile) => {
+    const id = Number(tile.dataset.image);
+    const isCover = ctx.artwork.length && ctx.artwork[0].id === id;
+    return [
+      isCover ? { label: "This is the cover", icon: "star", disabled: true, run: () => {} }
+              : { label: "Make this the cover", icon: "star", run: () => makeCover(id) },
+      { label: "Open the picture", icon: "open",
+        run: () => window.open(`/api/artwork/${id}/image`, "_blank", "noopener") },
+      { divider: true },
+      { label: "Remove this artwork", icon: "drop", danger: true, run: () => removeArt(id) },
+    ];
+  });
+
+  block.addEventListener("keydown", (e) => {
+    const tile = e.target.closest("[data-image]");
+    if (!tile || (e.key !== "Enter" && e.key !== " ")) return;
+    e.preventDefault();
+    makeCover(Number(tile.dataset.image));
   });
 };

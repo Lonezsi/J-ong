@@ -222,12 +222,33 @@ async function boot() {
   //: How far across before it counts, in pixels.
   const SWIPE = 55;
 
+  /* With a mouse, the gesture has to start on genuinely empty space.
+   *
+   * A finger dragging across a list means the list, because a row has no sideways
+   * gesture of its own. A mouse dragging across a row means selecting the words in it,
+   * and stealing that would be worse than not having the gesture at all. So a pointer
+   * that is a mouse has to begin somewhere there is nothing: the page behind the
+   * content, the gap under a section, the margins. Everything with its own meaning is
+   * named here and left alone.
+   *
+   * This is why swiping did nothing on a laptop: mice were turned away at the door,
+   * which is right for a drag that starts on a song and wrong for one that starts on
+   * the empty half of the page. */
+  const HAS_ITS_OWN_MEANING = [
+    "a", "button", "input", "textarea", "select", "label",
+    "[role=button]", "[data-act]", "[data-link]", "[contenteditable]",
+    ".track", ".render-row", ".album-card", ".lyric-card", ".pick-row",
+    ".band-card", ".knob-row", ".block-head", ".section-head", ".hero",
+  ].join(", ");
+
   let swipe = null;
   document.addEventListener("pointerdown", (e) => {
     swipe = null;
-    if (e.pointerType === "mouse" || e.button) return;      // a mouse has the button
+    if (e.button) return;                                   // a right or middle press
     if (e.target.closest(KEEPS_ITS_GESTURES)) return;       // something else owns this
-    swipe = { x: e.clientX, y: e.clientY, id: e.pointerId, done: false };
+    if (e.pointerType === "mouse" && e.target.closest(HAS_ITS_OWN_MEANING)) return;
+    swipe = { x: e.clientX, y: e.clientY, id: e.pointerId, done: false,
+              mouse: e.pointerType === "mouse" };
   }, { passive: true });
 
   document.addEventListener("pointermove", (e) => {
@@ -236,6 +257,11 @@ async function boot() {
     const dy = e.clientY - swipe.y;
     if (Math.abs(dy) >= Math.abs(dx)) { swipe = null; return; }   // they are scrolling
     if (Math.abs(dx) < SWIPE) return;
+    // A mouse drag that picked up words on the way was a selection after all.
+    if (swipe.mouse && !(window.getSelection() || { isCollapsed: true }).isCollapsed) {
+      swipe = null;
+      return;
+    }
     swipe.done = true;
     setRail(dx < 0);                                        // right opens, left shuts
   }, { passive: true });

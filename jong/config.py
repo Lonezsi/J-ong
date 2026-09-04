@@ -34,8 +34,10 @@ MODULES = [
     "albums",
     "sound",
     "arrange",
-    # "youtube",  uploading happens at the moment you do it, and the EQ is never
-    #             part of what goes up, so there was nothing here worth recording
+    # On, because "which render is the one that is actually online" turned out to be a
+    # real question. J-ong still does not push the file to YouTube: it opens the upload
+    # page with the render ready to hand and keeps the link against the version.
+    "youtube",
     "renders",
     "playlists",
     "sync",

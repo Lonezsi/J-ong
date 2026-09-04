@@ -283,11 +283,14 @@ J.views.library = {
 
     const heading = term ? `Results for “${J.esc(term)}”` : "Songs";
     root.innerHTML = `
-      ${albums.length && !term ? `
+      ${!term && J.state.modules.includes("albums") ? `
         <div class="section">
           <div class="section-head"><h2>Albums</h2><span class="grow"></span>
-            ${J.sort.control("albums", ALBUM_SORTS)}
+            ${albums.length ? J.sort.control("albums", ALBUM_SORTS) : ""}
             <button class="btn sm ghost" data-new-album>New album</button></div>
+          ${albums.length ? "" : `<p class="faint album-none">
+            No albums yet. One is a running order and a cover, and every song can be on
+            more than one.</p>`}
           <div class="card-grid">
             ${J.sort.apply(albums, "albums", ALBUM_SORTS).map((album) => `
               <div class="album-card" data-album="${album.id}" tabindex="0" role="button">
