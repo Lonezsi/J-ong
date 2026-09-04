@@ -618,3 +618,27 @@ def test_no_view_block_reaches_for_a_variable_it_was_never_given():
         if "root" not in given and re.search(r"[^.\w]root\b", body):
             trouble[name] = "reaches for root"
     assert not trouble, "blocks using a name they were not given: %s" % trouble
+
+
+def test_a_corrected_duration_is_only_written_for_the_file_that_was_decoded():
+    """One take's length landed on another take's row.
+
+    loadVersion points the slot at the new version before it sets the element's source,
+    so for a moment the element still holds the previous file. A loadedmetadata event
+    already in flight arrives with the old file's duration and the new version in the
+    slot, and the correction is written against the wrong version.
+
+    Found in a real library: a version stored as 41 seconds whose file is 256, while the
+    render row it came from had the right number all along. Nothing failed, and the wrong
+    number then drove the scrubber, the length sort and this page's own estimates.
+    """
+    text = pathlib.Path(JS_DIR, "40-player.js").read_text(encoding="utf-8")
+
+    at = text.index('audio.addEventListener("loadedmetadata"', text.index("tells it once"))
+    body = text[at:text.index("});", at)]
+
+    assert "currentSrc" in body, (
+        "the correction does not check which file the element actually decoded, so it "
+        "can write one version's duration onto another")
+    assert body.index("currentSrc") < body.index("J.patch"), \
+        "the check has to come before the write, or it is not a guard"

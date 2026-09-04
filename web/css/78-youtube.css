@@ -1,0 +1,116 @@
+/* The upload page.
+ *
+ * Three cards down the page in the order the decisions happen: what the file will be,
+ * what YouTube is told about it, and which account it goes to. Not a wizard, because
+ * every one of these can be revisited before anything leaves, and a wizard would hide
+ * the render settings behind a Next the moment you wanted to change them.
+ */
+
+.yt-title {
+  font-family: var(--display);
+  font-size: clamp(26px, 4vw, 38px);
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--s5);
+}
+
+.yt-form { display: grid; gap: var(--s5); max-width: 720px; }
+
+.yt-card {
+  padding: var(--s5);
+  background: var(--grad-surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  display: grid;
+  gap: var(--s4);
+}
+.yt-card h2 {
+  margin: 0;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 700;
+}
+.yt-card > p { margin: 0; font-size: 13.5px; }
+
+/* A checkbox that is a whole row, so it can be hit with a thumb. */
+.yt-check {
+  display: flex; align-items: center; gap: var(--s3);
+  font-size: 14px; cursor: pointer;
+}
+.yt-check input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.yt-check input:disabled { opacity: 0.4; }
+.yt-check input:disabled + span { color: var(--text-3); }
+
+/* What is about to be rendered, in one line, before anything is. */
+.yt-summary {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2);
+  padding: var(--s3);
+  background: var(--grad-sunken);
+  border-radius: var(--r-md);
+  font-size: 12.5px; color: var(--text-2);
+}
+.yt-summary .dot {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: currentColor; opacity: 0.5; flex: none;
+}
+
+.yt-progress { display: flex; align-items: center; gap: var(--s3); }
+.yt-status { font-size: 12.5px; color: var(--text-2); min-width: 12ch; }
+.yt-bar {
+  flex: 1; height: 4px; border-radius: 999px;
+  background: var(--grad-sunken); overflow: hidden;
+}
+.yt-bar span {
+  display: block; height: 100%; width: 0;
+  background: var(--accent);
+  transition: width var(--med);
+}
+
+/* The result, and whether it survived the trip. */
+.yt-made {
+  display: grid; gap: var(--s3);
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--grad-sunken);
+}
+.yt-made.hot { border-color: var(--bad); }
+.yt-made-head { display: flex; align-items: center; gap: var(--s2); font-size: 13.5px; }
+.yt-peak { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.yt-made.hot .yt-peak { color: var(--bad-hi); }
+.yt-warn { margin: 0; font-size: 13px; color: var(--bad-hi); max-width: 58ch; }
+.yt-audition { width: 100%; height: 34px; }
+
+.yt-desc { min-height: 92px; resize: vertical; font-family: inherit; }
+
+.yt-still { display: flex; align-items: center; gap: var(--s3); }
+.yt-still img {
+  width: 72px; height: 72px; object-fit: cover;
+  border-radius: var(--r-md); display: block;
+}
+
+/* Connecting an account: three real steps, not a button that fails. */
+.yt-steps { margin: 0; padding-left: var(--s5); font-size: 13.5px; display: grid; gap: var(--s2); }
+.yt-steps b { color: var(--text); }
+.yt-note { margin: 0; font-size: 12.5px; max-width: 60ch; }
+
+.yt-code { display: grid; gap: var(--s3); }
+.yt-usercode {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 26px; letter-spacing: 0.18em; text-align: center;
+  padding: var(--s4);
+  background: var(--grad-sunken);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  color: var(--accent-hi);
+  user-select: all;
+}
+
+/* A button that reads as a sentence, for an aside inside a paragraph. */
+.linkish {
+  background: none; border: 0; padding: 0;
+  font: inherit; color: var(--accent-hi);
+  text-decoration: underline; cursor: pointer;
+}

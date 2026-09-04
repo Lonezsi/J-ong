@@ -19,6 +19,11 @@ J.router = (function () {
     new URLSearchParams(queryPart || "").forEach((value, key) => { query[key] = value; });
 
     if (!parts.length) return { view: "library", params: query };
+    // Its own screen rather than a tab of the song, because it is the one thing here
+    // that leaves the building.
+    if (parts[0] === "song" && parts[2] === "youtube") {
+      return { view: "youtube", params: Object.assign({ id: parts[1] }, query) };
+    }
     if (parts[0] === "song") return { view: "song", params: Object.assign({ id: parts[1], tab: parts[2] }, query) };
     if (parts[0] === "album") return { view: "album", params: Object.assign({ id: parts[1] }, query) };
     if (parts[0] === "playlist") return { view: "playlist", params: Object.assign({ id: parts[1] }, query) };

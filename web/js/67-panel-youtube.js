@@ -133,14 +133,15 @@ J.blockYouTube = async function (block, ctx) {
       <div class="block-head"><h2>YouTube</h2>
         ${posts.length ? `<span class="tag">${posts.length}</span>` : ""}
         <span class="grow"></span>
-        <button class="btn ghost sm" data-act="upload">Upload to YouTube</button>
+        <a class="btn ghost sm" href="#/song/${ctx.songId}/youtube" data-link>Upload to YouTube</a>
       </div>`;
 
     if (!posts.length) {
       block.innerHTML = `${head}
         <p class="faint yt-none">Nothing of this song is on YouTube yet, or nothing that
-          J-ong has been told about. Upload opens YouTube with the render ready to drop
-          in, and keeps the link against the version that went up.</p>`;
+          J-ong has been told about. Upload renders the file through this song's sound and
+          sends it, and keeps the link against the version that went up.
+          <button class="linkish" data-act="record">Or paste a link you already have</button>.</p>`;
       return;
     }
 
@@ -175,7 +176,7 @@ J.blockYouTube = async function (block, ctx) {
     const row = act.closest("[data-post]");
     const post = row ? posts.find((p) => String(p.id) === row.dataset.post) : null;
 
-    if (act.dataset.act === "upload") return startUpload();
+    if (act.dataset.act === "record") return record(versionForUpload());
     if (act.dataset.act === "copy" && post) return copy(post.url);
   });
 

@@ -629,6 +629,15 @@ J.player = (function () {
       audio.addEventListener("loadedmetadata", async () => {
         const version = state.slots[slot].version;
         if (!version || version.kind === "render") return;   // nothing to correct on
+        /* Only for the file this element actually decoded.
+         *
+         * The slot is pointed at the new version before the new source is set, so
+         * between those two moments the element still holds the previous file. A
+         * metadata event already in flight then arrives with the old file's duration and
+         * the new version in the slot, and writes one take's length onto another's row.
+         * Found in a real library: a version stored as 41 seconds whose file is 256.
+         * currentSrc is what the element decoded, and it cannot be wrong about that. */
+        if (!audio.currentSrc || !audio.currentSrc.endsWith(srcFor(version))) return;
         if (!Number.isFinite(audio.duration)) return;
         if (Math.abs((version.duration || 0) - audio.duration) < 0.6) return;
         version.duration = audio.duration;

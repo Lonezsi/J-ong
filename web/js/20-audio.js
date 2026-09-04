@@ -97,57 +97,81 @@ J.audio = (function () {
 
   /* Rewire one deck's filters. Only when the set of bands changes; moving a node changes
    * parameters in place so the audio never stops. */
-  function rebuild(slot) {
-    const entry = decks[slot];
-    if (!entry || !entry.input) return;
-    entry.filters.forEach((f) => { try { f.disconnect(); } catch (e) { /* gone */ } });
-    try { entry.input.disconnect(); } catch (e) { /* first build */ }
-    entry.filters = [];
+  /* The chain, defined once.
+   *
+   * Both the deck you listen through and the offline pass that writes a file are built
+   * from this, in whichever context they are given. Two copies of a node order is the
+   * classic way an export quietly stops matching what you heard, with nothing able to
+   * tell you it has happened: there is no test that can compare a graph in one file
+   * against a graph in another, so the only defence is that there is only one.
+   *
+   * Returns the ends. What connects to them is the caller's business.
+   */
+  function buildChain(audioCtx, settings, into) {
+    const shape = Object.assign({}, FLAT, settings || {});
+    const input = (into && into.input) || audioCtx.createGain();
+    const filters = [];
 
-    const settings = entry.settings;
-    if (!settings.bypass) {
-      for (const band of settings.bands || []) {
+    if (!shape.bypass) {
+      for (const band of shape.bands || []) {
         if (!band.on) continue;
-        const filter = ctx.createBiquadFilter();
+        const filter = audioCtx.createBiquadFilter();
         filter.type = band.type;
-        filter.frequency.value = J.clamp(band.freq, 10, ctx.sampleRate / 2 - 100);
+        filter.frequency.value = J.clamp(band.freq, 10, audioCtx.sampleRate / 2 - 100);
         filter.Q.value = band.q;
         filter.gain.value = band.gain;
         filter._id = band.id;
-        entry.filters.push(filter);
+        filters.push(filter);
       }
     }
-    let node = entry.input;
-    for (const filter of entry.filters) {
+
+    let node = input;
+    for (const filter of filters) {
       node.connect(filter);
       node = filter;
     }
-    node.connect(entry.limiter);
-    entry.limiter.connect(entry.makeup);
-    applyLimiter(slot);
+
+    const limiter = (into && into.limiter) || audioCtx.createDynamicsCompressor();
+    const makeup = (into && into.makeup) || audioCtx.createGain();
+    node.connect(limiter);
+    limiter.connect(makeup);
+    setLimiter(limiter, makeup, shape);
+    return { input, filters, limiter, makeup, output: makeup };
   }
 
-  function applyLimiter(slot) {
-    const entry = decks[slot];
-    if (!entry || !entry.limiter) return;
-    const settings = entry.settings;
+  /* The limiter's numbers, applied to whichever pair of nodes. Also one definition. */
+  function setLimiter(limiter, makeup, settings) {
     const lim = settings.limiter || {};
     const on = lim.on && !settings.bypass;
-    entry.limiter.threshold.value = on ? J.clamp(lim.threshold, -60, 0) : 0;
-    entry.limiter.release.value = on ? J.clamp((lim.release || 120) / 1000, 0.001, 1) : 0.25;
-    entry.limiter.attack.value = on ? J.clamp((lim.attack || 5) / 1000, 0, 0.1) : 0.003;
+    limiter.threshold.value = on ? J.clamp(lim.threshold, -60, 0) : 0;
+    limiter.release.value = on ? J.clamp((lim.release || 120) / 1000, 0.001, 1) : 0.25;
+    limiter.attack.value = on ? J.clamp((lim.attack || 5) / 1000, 0, 0.1) : 0.003;
     /* The makeup carries ceiling minus threshold, not the ceiling.
      *
      * A limiter holds its output down to about the threshold, so bringing that back up
      * to where the ceiling line is drawn is the difference between the two. Using the
      * ceiling on its own, which is clamped to -30..0, meant the makeup was always an
-     * attenuation: switching the limiter on could only ever make things quieter, the
-     * drawn ceiling was never approached, and comparing limiter against bypass was
-     * comparing loudness rather than limiting. */
+     * attenuation: switching the limiter on could only ever make things quieter. */
     const ceiling = on ? J.clamp(lim.ceiling, -30, 0) : 0;
     const threshold = on ? J.clamp(lim.threshold, -60, 0) : 0;
     const trim = settings.bypass ? 0 : (settings.gain || 0);
-    entry.makeup.gain.value = Math.pow(10, ((ceiling - threshold) + trim) / 20);
+    makeup.gain.value = Math.pow(10, ((ceiling - threshold) + trim) / 20);
+  }
+
+  function rebuild(slot) {
+    const entry = decks[slot];
+    if (!entry || !entry.input) return;
+    entry.filters.forEach((f) => { try { f.disconnect(); } catch (e) { /* gone */ } });
+    try { entry.input.disconnect(); } catch (e) { /* first build */ }
+    const built = buildChain(ctx, entry.settings, entry);
+    entry.filters = built.filters;
+  }
+
+  /* The live deck's numbers, through the one definition above. */
+  function applyLimiter(slot) {
+    const entry = decks[slot];
+    if (!entry || !entry.limiter) return;
+    setLimiter(entry.limiter, entry.makeup, entry.settings);
   }
 
   return {
@@ -164,6 +188,15 @@ J.audio = (function () {
     inputOf(slot) {
       const entry = wire(slot);
       return entry ? entry.input : null;
+    },
+
+    /* Build this song's chain in any context, live or offline.
+     *
+     * The bouncer calls this with an OfflineAudioContext, which is what makes an
+     * exported file the same sound as the one you approved rather than a second
+     * implementation that agrees today. */
+    chainInto(audioCtx, settings) {
+      return buildChain(audioCtx, settings, null);
     },
 
     // Kept for the EQ's spectrum, which draws whichever deck it is showing.
