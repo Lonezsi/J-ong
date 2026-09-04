@@ -61,8 +61,22 @@ def save_config(cfg):
 
 # ── server ───────────────────────────────────────────────────────────────────
 class Server:
-    def __init__(self, base):
+    """Talks to a library, carrying whatever credential this machine has been given.
+
+    It used to carry nothing at all while the server 401s every path, so an agent
+    installed against an authenticated host had been failing on its first request since
+    the day it was set up, silently, because the watch loop swallowed the error.
+    """
+
+    def __init__(self, base, token=None):
         self.base = base.rstrip("/")
+        self.token = token or ""
+
+    def _headers(self, extra=None):
+        head = dict(extra or {})
+        if self.token:
+            head["X-Jong-Token"] = self.token
+        return head
 
     def _open(self, request, timeout=120):
         try:
@@ -82,22 +96,23 @@ class Server:
                              "`jong_client.py server <url>`." % (self.base, e.reason))
 
     def get(self, path):
-        return self._open(urllib.request.Request(self.base + path,
-                                                 headers={"Accept": "application/json"}))
+        return self._open(urllib.request.Request(
+            self.base + path, headers=self._headers({"Accept": "application/json"})))
 
     def post(self, path, payload):
         data = json.dumps(payload).encode("utf-8")
         return self._open(urllib.request.Request(
             self.base + path, data=data, method="POST",
-            headers={"Content-Type": "application/json"}))
+            headers=self._headers({"Content-Type": "application/json"})))
 
     def upload(self, path, file_path, headers=None):
         size = os.path.getsize(file_path)
         with open(file_path, "rb") as f:
             request = urllib.request.Request(
                 self.base + path, data=f, method="POST",
-                headers=dict({"Content-Type": "application/octet-stream",
-                              "Content-Length": str(size)}, **(headers or {})))
+                headers=self._headers(dict({"Content-Type": "application/octet-stream",
+                                            "Content-Length": str(size)},
+                                           **(headers or {}))))
             return self._open(request, timeout=900)
 
 
@@ -221,13 +236,22 @@ def cmd_watch(cfg, server, args):
     minutes = max(1, int(cfg.get("interval_minutes", 5)))
     print("Watching %d folder(s), every %d minute(s). Ctrl-C to stop."
           % (len(cfg["folders"]), minutes))
-    args.yes = True
     while True:
         try:
             _, fresh = survey(cfg, server)
             if fresh:
                 print("[%s] %d new" % (time.strftime("%H:%M"), len(fresh)))
-                cmd_push(cfg, server, args)
+                # Into the renders list, and no further.
+                #
+                # This used to force args.yes and call push, which accepts any 0.62
+                # fuzzy title match without asking and makes a new song when nothing
+                # matches. It is the one genuinely unattended path in the whole app and
+                # it was the only one that wrote on a guess, on a timer, for the life of
+                # the logon session, with nothing to tell you it had happened. Which
+                # song a render belongs to is a question worth asking while looking at
+                # the library. The interactive push command is unchanged.
+                for path in fresh:
+                    send_render(cfg, server, path)
         except SystemExit as e:
             # A watcher that dies because the server was restarted is not a watcher.
             print("[%s] %s" % (time.strftime("%H:%M"), e))
@@ -412,6 +436,53 @@ def cmd_server(cfg, server, args):
     return 0
 
 
+def cmd_login(cfg, server, args):
+    """Trade the library's password for a token this machine can keep.
+
+    The password is used once, here, and never written down. What is stored is a token
+    scoped to uploading, so this file being read does not hand anybody the ability to
+    delete a song. Revoke it from Settings on the library itself.
+    """
+    import getpass
+
+    if not cfg.get("server"):
+        print("Set the address first: jong_client.py server <url>")
+        return 1
+
+    password = args.password or getpass.getpass("Password for %s: " % cfg["server"])
+    if not password:
+        print("Nothing entered.")
+        return 1
+
+    # Signed in as a person for exactly one call, to ask for the machine's own credential.
+    data = json.dumps({"password": password}).encode("utf-8")
+    request = urllib.request.Request(cfg["server"].rstrip("/") + "/api/auth/login",
+                                     data=data, method="POST",
+                                     headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            cookie = response.headers.get("Set-Cookie", "").split(";")[0]
+    except urllib.error.HTTPError as e:
+        print("J-ong said no (%d). Wrong password?" % e.code)
+        return 1
+    except urllib.error.URLError as e:
+        print("Cannot reach %s: %s" % (cfg["server"], e.reason))
+        return 1
+
+    name = args.name or ("%s" % os.environ.get("COMPUTERNAME") or "a machine")
+    made = json.dumps({"name": name, "scope": "upload"}).encode("utf-8")
+    ask = urllib.request.Request(cfg["server"].rstrip("/") + "/api/auth/tokens",
+                                 data=made, method="POST",
+                                 headers={"Content-Type": "application/json",
+                                          "Cookie": cookie})
+    with urllib.request.urlopen(ask, timeout=30) as response:
+        cfg["token"] = json.loads(response.read().decode("utf-8"))["token"]
+    save_config(cfg)
+    print("This machine can now reach %s as \"%s\"." % (cfg["server"], name))
+    print("It can upload renders and read the library. It cannot delete anything.")
+    return 0
+
+
 def cmd_update(cfg, server, args):
     """Pull a newer J-ong. Fast forward only, and never over local edits."""
     def git(*parts):
@@ -478,7 +549,7 @@ def cmd_install(cfg, server, args):
         print("No folders to watch. Add one with: --folder <path>")
         return 1
 
-    server = Server(cfg["server"])
+    server = Server(cfg["server"], cfg.get("token"))
 
     script = os.path.abspath(__file__)
     quoted = '"%s" "%s"' % (sys.executable, script)
@@ -529,7 +600,7 @@ COMMANDS = {
     "scan": cmd_scan, "push": cmd_push, "watch": cmd_watch, "add": cmd_add,
     "folders": cmd_folders, "server": cmd_server, "update": cmd_update,
     "install": cmd_install, "push-file": cmd_push_file, "render": cmd_render,
-    "shell": cmd_shell, "flpath": cmd_flpath,
+    "shell": cmd_shell, "flpath": cmd_flpath, "login": cmd_login,
 }
 
 
@@ -543,6 +614,9 @@ def main(argv=None):
     add = sub.add_parser("add", help="watch a folder")
     add.add_argument("path")
     sub.add_parser("folders", help="list watched folders")
+    login = sub.add_parser("login", help="give this machine a credential for the library")
+    login.add_argument("--password", help="asked for if not given")
+    login.add_argument("--name", help="what to call this machine in Settings")
     where = sub.add_parser("server", help="set the J-ong address")
     where.add_argument("url")
     sub.add_parser("update", help="pull a newer J-ong from GitHub")
@@ -569,7 +643,7 @@ def main(argv=None):
         args.yes = False
 
     cfg = load_config()
-    server = Server(cfg["server"])
+    server = Server(cfg["server"], cfg.get("token"))
     return COMMANDS[args.command](cfg, server, args)
 
 

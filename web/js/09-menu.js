@@ -173,6 +173,24 @@ J.menu = (function () {
         e.preventDefault();
         J.menu.show(items, e);
       });
+
+      /* The same menus, from the keyboard.
+       *
+       * Fourteen of these and no way to reach any of them without a mouse. The Menu key
+       * and Shift+F10 are what a person's hands already know, and the menu is anchored
+       * to the row rather than to a pointer that was never there: place() falls back to
+       * 0,0 when there are no coordinates, which put every keyboard menu in the corner
+       * of the screen. */
+      root.addEventListener("keydown", (e) => {
+        const wanted = e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey);
+        if (!wanted) return;
+        const hit = e.target.closest(selector);
+        if (!hit || !root.contains(hit)) return;
+        const items = build(hit, e);
+        if (!items || !items.length) return;
+        e.preventDefault();
+        J.menu.show(items, { anchor: hit });
+      });
     },
   };
 })();

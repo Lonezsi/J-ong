@@ -250,3 +250,65 @@ def test_two_modules_cannot_quietly_claim_the_same_route():
             sys.modules.pop("jong.modules." + name, None)
         registry.load([m for m in __import__("jong.config", fromlist=["x"]).MODULES
                        if m != "auth"])
+
+
+def test_a_handler_that_blows_up_leaves_its_traceback_behind(server):
+    """It used to be formatted into str(e) in a 500 body and discarded on the spot: no
+    file, no line number, nothing anywhere. On a host reached over a tunnel that is the
+    whole of the diagnostics, and str(e) on a KeyError is one quoted word.
+
+    The reference in the reply is what lines the two ends up: the browser says
+    "something failed (a3f)" and the same a3f is at the top of this list, so a fault
+    somebody reports and the traceback explaining it can be matched without guessing at
+    timestamps.
+    """
+    from jong import problems, registry
+
+    problems.clear()
+
+    def explode(req):
+        raise RuntimeError("a fault nobody anticipated")
+
+    registry._routes[("GET", "/api/explode")] = explode
+    try:
+        status, said = server.get("/api/explode")
+    finally:
+        registry._routes.pop(("GET", "/api/explode"), None)
+
+    assert status == 500
+    assert "ref" in said, "the reply gave no way to find the traceback"
+
+    kept = problems.recent()
+    assert kept, "the traceback was thrown away"
+    assert kept[0]["ref"] == said["ref"], "the reply and the record do not line up"
+    assert kept[0]["kind"] == "RuntimeError"
+    assert kept[0]["where"] == "/api/explode"
+    assert "a fault nobody anticipated" in kept[0]["traceback"]
+    assert "Traceback" in kept[0]["traceback"], "only the message was kept"
+
+    _, health = server.get("/api/health")
+    assert health.get("problems") == 1, "health does not mention it"
+
+    problems.clear()
+    assert problems.recent() == []
+
+
+def test_the_error_log_cannot_grow_without_bound(server):
+    """In memory on a machine nobody is watching, so it has to be a fixed size. The
+    oldest go and the count says how many, rather than quietly pretending it kept
+    everything."""
+    from jong import problems
+
+    problems.clear()
+    for n in range(problems.LIMIT + 25):
+        try:
+            raise ValueError("number %d" % n)
+        except ValueError as e:
+            problems.record("/api/whatever", e)
+
+    counted = problems.count()
+    assert counted["kept"] == problems.LIMIT
+    assert counted["dropped"] == 25, "it did not say what it had let go"
+    assert "number %d" % (problems.LIMIT + 24) in problems.recent(1)[0]["traceback"], \
+        "the newest is not the one at the top"
+    problems.clear()

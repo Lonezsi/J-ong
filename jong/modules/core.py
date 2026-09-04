@@ -6,7 +6,7 @@ leaving a button that returns 404.
 """
 import time
 
-from .. import config, registry, blobs, db
+from .. import config, registry, blobs, db, problems
 from ..wire import Error
 
 NAME = "core"
@@ -59,6 +59,10 @@ def health(req):
         out["degraded"] = ["the database did not answer: %s" % e]
         return out
 
+    kept = problems.count()
+    if kept["kept"]:
+        out["problems"] = kept["kept"]
+
     failed = registry.failures()
     door = None
     if registry.has("auth"):
@@ -72,10 +76,27 @@ def health(req):
     return out
 
 
+def errors(req):
+    """The tracebacks this server has produced since it started.
+
+    Behind the door, unlike /api/health, because a traceback names paths on the machine
+    and the shape of the code. Not on disk: see jong/problems.py for why, and for what
+    that costs.
+    """
+    return {"errors": problems.recent(int(req.q("limit") or 50)), **problems.count()}
+
+
+def forget_errors(req):
+    problems.clear()
+    return {"cleared": True}
+
+
 def ROUTES():
     return {
         ("GET", "/api/state"): state,
         ("GET", "/api/health"): health,
+        ("GET", "/api/health/errors"): errors,
+        ("DELETE", "/api/health/errors"): forget_errors,
         ("GET", "/api/settings"): get_settings,
         ("PUT", "/api/settings"): put_settings,
     }

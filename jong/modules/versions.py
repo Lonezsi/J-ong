@@ -27,13 +27,32 @@ SCHEMA = [
       label       TEXT NOT NULL DEFAULT '',
       filename    TEXT NOT NULL DEFAULT '',
       source_path TEXT NOT NULL DEFAULT '',
-      created_at  REAL NOT NULL
+      created_at  REAL NOT NULL,
+      project_at  REAL NOT NULL DEFAULT 0,
+      rendered_at REAL NOT NULL DEFAULT 0
     )
     """,
     "CREATE INDEX IF NOT EXISTS versions_song ON versions(song_id, n DESC)",
     "CREATE INDEX IF NOT EXISTS versions_digest ON versions(digest)",
 ]
 
+
+
+def _add_date_columns():
+    """The two dates a render carries, kept when it becomes a version.
+
+    attach() had both in its hand and dropped them, so once a render was filed the only
+    date left was the song's updated_at, which a saved lyric bumps. "What have I not
+    touched in six months" was measuring the wrong thing.
+    """
+    db.add_column_if_missing("versions", "project_at", "REAL NOT NULL DEFAULT 0")
+    db.add_column_if_missing("versions", "rendered_at", "REAL NOT NULL DEFAULT 0")
+
+
+#: Named steps, each run once ever and recorded by name. See jong/registry.py.
+MIGRATE = [
+    ("dates_from_the_render", _add_date_columns),
+]
 
 def get(version_id):
     row = db.one("SELECT * FROM versions WHERE id = ?", (version_id,))
@@ -49,7 +68,7 @@ def list_versions(req):
 
 
 def add_stored(song_id, digest, ext, size, duration=0.0, bitrate=0,
-               label="", filename="", source_path=""):
+               label="", filename="", source_path="", project_at=0.0, rendered_at=0.0):
     """Make a version out of bytes that are already in the blob store.
 
     An upload calls this once the body has landed, and the renders list calls it when a
@@ -67,7 +86,8 @@ def add_stored(song_id, digest, ext, size, duration=0.0, bitrate=0,
         "song_id": song_id, "n": next_n, "digest": digest, "ext": ext,
         "size": size, "duration": duration or 0.0, "bitrate": bitrate or 0,
         "label": label or "", "filename": filename or "",
-        "source_path": source_path or "", "created_at": time.time()})
+        "source_path": source_path or "", "created_at": time.time(),
+        "project_at": project_at or 0.0, "rendered_at": rendered_at or 0.0})
     db.update("songs", song_id, {"current_version_id": version_id,
                                  "updated_at": time.time()})
     return get(version_id), False
@@ -166,6 +186,10 @@ def delete_version(req):
         newest = db.one("SELECT id FROM versions WHERE song_id = ? ORDER BY n DESC LIMIT 1",
                         (song["id"],))
         db.update("songs", song["id"], {"current_version_id": newest["id"] if newest else None})
+    if song:
+        # Every sibling path bumps this; only deleting did not, so a song could lose a
+        # render and still sort as untouched under "Recently touched".
+        songs.touch(song["id"])
     # Only drop the bytes when no version anywhere still points at them.
     still = db.one("SELECT id FROM versions WHERE digest = ? LIMIT 1", (version["digest"],))
     # The table, not the module. Renders can be switched off in config.MODULES with the

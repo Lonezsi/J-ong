@@ -111,10 +111,18 @@ J.sheet = (opts) => new Promise((resolve) => {
   backdrop.hidden = false;
 
   const sheet = J.$(".sheet", backdrop);
+  // Where to put focus back. A dialog that takes focus and does not give it back leaves
+  // the next Tab starting from the top of the document.
+  const cameFrom = document.activeElement;
+  const app = J.$("#app");
+  if (app) app.inert = true;
+
   const close = (value) => {
     document.removeEventListener("keydown", onKey);
+    if (app) app.inert = false;
     backdrop.hidden = true;
     backdrop.innerHTML = "";
+    if (cameFrom && cameFrom.isConnected && cameFrom.focus) cameFrom.focus();
     resolve(value);
   };
   const collect = () => {
@@ -126,7 +134,31 @@ J.sheet = (opts) => new Promise((resolve) => {
   };
   const onKey = (e) => {
     if (e.key === "Escape") { e.preventDefault(); close(null); }
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); close(collect()); }
+
+    /* Ctrl+Enter confirms, except where confirming destroys something.
+     *
+     * J.confirm builds a danger dialog and treats any non-null answer as yes, so this
+     * shortcut was pressing "Delete it" on a dialog whose focus you could not see and
+     * whose question you may not have finished reading. A destructive answer should cost
+     * a deliberate press of the button that says what it does. */
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !danger) {
+      e.preventDefault();
+      close(collect());
+    }
+
+    /* Tab stays inside. Without this, tabbing out of a modal walks the page behind it,
+     * which is both a trap for the keyboard and a way to press something you cannot see. */
+    if (e.key !== "Tab") return;
+    const reachable = J.$$(
+      'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]),'
+      + ' select:not([disabled]), [tabindex]:not([tabindex="-1"])', sheet)
+      .filter((n) => n.offsetParent !== null || n === document.activeElement);
+    if (!reachable.length) return;
+    const edge = e.shiftKey ? reachable[0] : reachable[reachable.length - 1];
+    if (document.activeElement === edge || !sheet.contains(document.activeElement)) {
+      e.preventDefault();
+      (e.shiftKey ? reachable[reachable.length - 1] : reachable[0]).focus();
+    }
   };
   document.addEventListener("keydown", onKey);
   backdrop.onclick = (e) => { if (e.target === backdrop) close(null); };
@@ -137,8 +169,14 @@ J.sheet = (opts) => new Promise((resolve) => {
     if (act.dataset.act === "ok") close(collect());
   });
   if (onMount) onMount(sheet, close);
-  const first = J.$("input, textarea, select", sheet);
-  if (first) setTimeout(() => { first.focus(); if (first.select) first.select(); }, 30);
+  // Something inside always has focus, so Escape and Tab reach this dialog rather than
+  // the page behind it. A question with no field still has its buttons.
+  const first = J.$("input, textarea, select", sheet)
+    || J.$("[data-act=cancel]", sheet) || J.$("button", sheet) || sheet;
+  setTimeout(() => {
+    first.focus();
+    if (first.select && first.tagName !== "BUTTON") first.select();
+  }, 30);
 });
 
 J.confirm = (title, sub, confirm) =>

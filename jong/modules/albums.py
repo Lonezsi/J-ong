@@ -156,6 +156,9 @@ def remove_song(req):
     pl = _playlists()
     if pl:
         pl.album_lost_song(album["id"], req.params["song_id"])
+    # add_song bumps this and remove_song did not, so taking a track off a record left it
+    # looking as though nothing had happened to it.
+    db.update("albums", album["id"], {"updated_at": time.time()})
     return {"removed": req.params["song_id"]}
 
 

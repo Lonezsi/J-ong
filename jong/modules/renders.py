@@ -243,7 +243,11 @@ def attach(req):
     version, already = versions.add_stored(
         song["id"], render["digest"], render["ext"], render["size"],
         render["duration"], render["bitrate"],
-        filename=render["filename"], source_path=render["source_path"])
+        filename=render["filename"], source_path=render["source_path"],
+        # Carried through rather than dropped: these say when the work happened, and the
+        # song's own updated_at is bumped by saving a lyric.
+        project_at=render.get("project_at") or 0.0,
+        rendered_at=render.get("rendered_at") or 0.0)
     db.update("renders", render["id"], {"used_at": time.time(), "song_id": song["id"],
                                         "version_id": version["id"]})
     return {"render": _decorate([get(render["id"])])[0], "song": songs.get(song["id"]),

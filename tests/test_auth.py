@@ -281,3 +281,81 @@ def test_a_missing_auth_file_is_still_just_a_fresh_library(secured):
         os.remove(path)
     assert auth.damaged() is None
     assert auth.has_password() is False
+
+
+# ── a credential for a machine ───────────────────────────────────────────────
+
+def _as_owner(client):
+    """Set a password, sign in, and hand back the header that proves it."""
+    code = auth.setup_code()
+    client.post("/api/auth/setup", {"code": code, "password": "a"})
+    return {"Cookie": _sign_in(client, "a")}
+
+
+def test_a_token_gets_a_machine_in_where_a_session_would_not(secured):
+    """The client installs a logon task pointed at a host and held no credential at all,
+    so it had been failing on its first request since the day it was installed, silently,
+    because cmd_watch swallowed the error. A token is what it carries now."""
+    owner = _as_owner(secured)
+    status, made = secured.request("POST", "/api/auth/tokens", {"name": "the laptop"},
+                                   headers=owner)
+    assert status == 200, made
+    raw = made["token"]
+    assert raw.startswith("jt_")
+
+    status, _ = secured.request("GET", "/api/state")
+    assert status == 401, "a caller with no credential should be turned away"
+
+    status, _ = secured.request("GET", "/api/state", headers={"X-Jong-Token": raw})
+    assert status == 200, "the token did not open the door"
+
+
+def test_a_token_cannot_reach_past_what_it_was_made_for(secured):
+    """A credential sitting in a plain file on a laptop should not be able to delete a
+    song. The scope is checked against the method and the path, so it does not depend on
+    the client choosing to behave."""
+    owner = _as_owner(secured)
+    _, made = secured.request("POST", "/api/auth/tokens", {"name": "the laptop"},
+                              headers=owner)
+    machine = {"X-Jong-Token": made["token"]}
+
+    _, song = secured.request("POST", "/api/songs", {"title": "Not Yours To Delete"},
+                              headers=owner)
+    song_id = song["song"]["id"]
+
+    status, _ = secured.request("DELETE", "/api/songs/%d" % song_id, headers=machine)
+    assert status == 401, "an upload token deleted a song"
+
+    status, still = secured.request("GET", "/api/songs", headers=machine)
+    assert status == 200
+    assert any(s["id"] == song_id for s in still["songs"]), "it went anyway"
+
+
+def test_the_token_itself_is_never_stored(secured):
+    """Stored the way the password is: only a digest, so reading the database does not
+    hand anybody a working credential."""
+    import json as _json
+
+    from jong import db
+
+    owner = _as_owner(secured)
+    _, made = secured.request("POST", "/api/auth/tokens", {"name": "the laptop"},
+                              headers=owner)
+
+    rows = db.query("SELECT * FROM auth_tokens")
+    assert rows, "nothing was written"
+    assert made["token"] not in _json.dumps(rows), "the token is in the database in clear"
+
+
+def test_a_revoked_token_stops_working(secured):
+    owner = _as_owner(secured)
+    _, made = secured.request("POST", "/api/auth/tokens", {"name": "gone soon"},
+                              headers=owner)
+    machine = {"X-Jong-Token": made["token"]}
+    assert secured.request("GET", "/api/state", headers=machine)[0] == 200
+
+    _, listed = secured.request("GET", "/api/auth/tokens", headers=owner)
+    secured.request("DELETE", "/api/auth/tokens/%d" % listed["tokens"][0]["id"],
+                    headers=owner)
+
+    assert secured.request("GET", "/api/state", headers=machine)[0] == 401,         "a revoked token still works"

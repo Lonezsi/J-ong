@@ -16,7 +16,7 @@ import hashlib
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import config, registry
+from . import config, registry, problems
 from .wire import Request, Response, Error
 
 CONTENT_TYPES = {
@@ -342,7 +342,11 @@ class Handler(BaseHTTPRequestHandler):
         if path in OPEN_PAGES or path in OPEN_API:
             return False
         from .modules import auth
-        return not auth.signed_in(self.headers)
+        if auth.signed_in(self.headers):
+            return False
+        # A machine credential, scoped to what a machine actually does. Checked with the
+        # method and path so a token can never reach past what it was made for.
+        return not auth.token_allows(self.headers, self._method_now, path)
 
     def _door_is_broken(self):
         """The stored password exists and cannot be read.
@@ -364,6 +368,8 @@ class Handler(BaseHTTPRequestHandler):
     def _dispatch(self, method):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        # The door has to know which verb is being attempted, not just where.
+        self._method_now = method
         query = {k: v[-1] for k, v in urllib.parse.parse_qs(parsed.query).items()}
 
         # Before anything else, including the login page and the setup flow.
@@ -406,8 +412,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": e.message}, e.status)
         except Exception as e:
             # The message is worth more than a 500 with nothing in it, and this server
-            # only ever listens to one person.
-            return self._json({"error": "%s: %s" % (type(e).__name__, e)}, 500)
+            # only ever listens to one person. The traceback goes where it can be read
+            # afterwards, and the reference in the reply is what lines the two up.
+            ref = problems.record(path, e, method)
+            return self._json({"error": "%s: %s" % (type(e).__name__, e), "ref": ref}, 500)
 
         if isinstance(result, Response):
             if getattr(result, "path", None):

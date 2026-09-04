@@ -25,7 +25,7 @@ J.trackRow = function (song, opts) {
           aria-label="Open ${J.esc(song.title)}">${lead}</a>`;
 
   return `
-    <div class="track ${playing ? "playing" : ""}" data-song="${song.id}" tabindex="0" role="button">
+    <div class="track ${playing ? "playing" : ""}" data-song="${song.id}" tabindex="-1" role="button">
       ${leadWrapped}
       <span class="truncate">
         <a class="title truncate" href="#/song/${song.id}" data-link
@@ -53,9 +53,32 @@ J.wireTracks = function (root, songs) {
     const row = e.target.closest(".track");
     if (row && !e.target.closest("a")) activate(row);
   });
+  /* One tab stop for the whole list, and the arrows move within it.
+   *
+   * Every row used to be focusable, so three hundred songs was three hundred tab stops
+   * standing between the search box and the player, which is last in the document. This
+   * is how a listbox has worked for thirty years and it is what a person's hands expect.
+   */
+  const rows = () => J.$$(".track", root);
+  function land(on) {
+    if (!on) return;
+    rows().forEach((r) => { r.tabIndex = r === on ? 0 : -1; });
+    on.focus();
+  }
+  const firstRow = rows()[0];
+  if (firstRow) firstRow.tabIndex = 0;
+
   root.addEventListener("keydown", (e) => {
     const row = e.target.closest(".track");
-    if (row && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); activate(row); }
+    if (!row) return;
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(row); return; }
+    const all = rows();
+    const at = all.indexOf(row);
+    if (at < 0) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); land(all[Math.min(at + 1, all.length - 1)]); }
+    if (e.key === "ArrowUp") { e.preventDefault(); land(all[Math.max(at - 1, 0)]); }
+    if (e.key === "Home") { e.preventDefault(); land(all[0]); }
+    if (e.key === "End") { e.preventDefault(); land(all[all.length - 1]); }
   });
   /* A pointer that settles on a row is usually about to press it. Not on the way past,
    * which would fetch a file for every row a mouse crossed, and not on touch, where
@@ -215,7 +238,10 @@ J.views.library = {
     const term = (params.q || "").trim();
     const [songData, albumData] = await Promise.all([
       J.get(`/api/songs${term ? `?q=${encodeURIComponent(term)}` : ""}`),
-      J.state.modules.includes("albums") ? J.get("/api/albums") : Promise.resolve({ albums: [] }),
+      // Not while searching: the template drops the albums section whenever there is a
+      // term, so this was a request per keystroke for something nobody was going to see.
+      J.state.modules.includes("albums") && !term
+        ? J.get("/api/albums") : Promise.resolve({ albums: [] }),
     ]);
     const songs = songData.songs || [];
     const albums = albumData.albums || [];

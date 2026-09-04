@@ -328,3 +328,47 @@ def test_the_same_bytes_arriving_again_can_teach_a_date_but_never_move_one(serve
                              headers={"X-Project-At": repr(later)})
     assert abs(three["render"]["project_at"] - first) < 1, \
         "a later arrival moved a date that was already known"
+
+
+def test_the_dates_survive_becoming_a_version(server, wav):
+    """attach() had both dates in its hand and dropped them, so the moment a render was
+    filed the only date left on it was the song's updated_at, which saving a lyric bumps.
+    "What have I not touched in six months" was measuring the wrong thing."""
+    import time
+
+    from jong import db
+
+    made = time.time() - 86400 * 90
+    bounced = time.time() - 86400 * 3
+    _, arrived = server.upload("/api/renders", wav("carried.wav", seconds=0.5),
+                               headers={"X-Project-At": repr(made),
+                                        "X-Rendered-At": repr(bounced)})
+    render_id = arrived["render"]["id"]
+
+    status, filed = server.post("/api/renders/%d/attach" % render_id, {"title": "Carried"})
+    assert status == 200, filed
+
+    version = db.one("SELECT * FROM versions WHERE id = ?", (filed["version"]["id"],))
+    assert abs(version["project_at"] - made) < 2, "the project date was dropped"
+    assert abs(version["rendered_at"] - bounced) < 2, "the render date was dropped"
+
+
+def test_a_migration_step_runs_once_and_is_written_down(server):
+    """Six roadmap items add one of these and nothing recorded what had run, so the first
+    migration that has to transform data rather than add a column would have run twice on
+    a restore, silently."""
+    from jong import db, registry
+
+    ran = []
+    registry._migrate("pretend", [("a_step", lambda: ran.append(1))])
+    assert ran == [1]
+
+    registry._migrate("pretend", [("a_step", lambda: ran.append(1))])
+    assert ran == [1], "the step ran a second time"
+
+    kept = db.query("SELECT * FROM migrations WHERE module = ?", ("pretend",))
+    assert [r["step"] for r in kept] == ["a_step"]
+
+    # A different module's step of the same name is its own business.
+    registry._migrate("other", [("a_step", lambda: ran.append(2))])
+    assert ran == [1, 2], "one module's history blocked another's"

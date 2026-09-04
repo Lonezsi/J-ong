@@ -21,11 +21,40 @@ import hashlib
 import secrets
 import threading
 
-from .. import config
+from .. import config, db
 from ..wire import Error, Response
 
 NAME = "auth"
-SCHEMA = []
+SCHEMA = [
+    """
+    CREATE TABLE IF NOT EXISTS auth_tokens (
+      id         INTEGER PRIMARY KEY,
+      name       TEXT NOT NULL,
+      digest     TEXT NOT NULL UNIQUE,
+      scope      TEXT NOT NULL DEFAULT 'upload',
+      created_at REAL NOT NULL,
+      last_used  REAL NOT NULL DEFAULT 0
+    )
+    """,
+]
+
+#: What a token is allowed to do.
+#:
+#: The agent that watches a folder needs to push bytes and to know the library is there.
+#: It does not need to delete a song, and a credential sitting in a plain file on a
+#: laptop should not be able to. "upload" is every route the client actually calls;
+#: "full" exists for a token you deliberately make for something else.
+SCOPES = {
+    "upload": (
+        ("GET", "/api/state"),
+        ("GET", "/api/health"),
+        ("POST", "/api/renders"),
+        ("POST", "/api/renders/ingest"),
+        ("GET", "/api/songs"),
+        ("GET", "/api/sync/folders"),
+    ),
+    "full": None,          # None means no restriction
+}
 
 AUTH_PATH = os.path.join(config.DATA, "auth.json")
 SETUP_PATH = os.path.join(config.DATA, "setup-code.txt")
@@ -214,6 +243,44 @@ def valid(token):
     return 0 <= age <= SESSION_DAYS * 86400
 
 
+#: Tokens are stored the way passwords are: only a digest, so the file being read does
+#: not hand anybody the credential.
+def _token_digest(raw):
+    return hashlib.sha256(("jong-token:" + raw).encode("utf-8")).hexdigest()
+
+
+def make_token(name, scope="upload"):
+    """Mint one. The raw value is returned once and never stored."""
+    if scope not in SCOPES:
+        raise Error("scope must be one of: " + ", ".join(sorted(SCOPES)))
+    raw = "jt_" + secrets.token_urlsafe(30)
+    db.insert("auth_tokens", {"name": (name or "a machine")[:80],
+                              "digest": _token_digest(raw), "scope": scope,
+                              "created_at": time.time(), "last_used": 0})
+    return raw
+
+
+def token_allows(headers, method, path):
+    """Does the X-Jong-Token on this request cover this route.
+
+    Checked instead of a session, not as well as one, so a token can never be used to
+    reach something the person who made it did not intend. An unknown token is simply not
+    signed in, with no way to tell it from a wrong one.
+    """
+    raw = (headers.get("X-Jong-Token") or "").strip()
+    if not raw or not db.table_exists("auth_tokens"):
+        return False
+    row = db.one("SELECT * FROM auth_tokens WHERE digest = ?", (_token_digest(raw),))
+    if not row:
+        return False
+    allowed = SCOPES.get(row["scope"], ())
+    if allowed is not None and (method, path) not in allowed:
+        return False
+    # Useful for telling a live agent from one that stopped months ago.
+    db.run("UPDATE auth_tokens SET last_used = ? WHERE id = ?", (time.time(), row["id"]))
+    return True
+
+
 def signed_in(headers):
     if not has_password():
         return False
@@ -358,11 +425,33 @@ def SUMMARY():
     return {"protected": has_password()}
 
 
+def list_tokens(req):
+    """What machines can reach this library, and when each last did."""
+    rows = db.query("SELECT id, name, scope, created_at, last_used FROM auth_tokens "
+                    "ORDER BY created_at DESC")
+    return {"tokens": rows}
+
+
+def create_token(req):
+    """Mint one for a machine. The value comes back once and is never stored."""
+    data = req.json()
+    raw = make_token(data.get("name"), (data.get("scope") or "upload").strip())
+    return {"token": raw, "note": "This is the only time it is shown."}
+
+
+def revoke_token(req):
+    db.run("DELETE FROM auth_tokens WHERE id = ?", (req.params["id"],))
+    return {"revoked": req.params["id"]}
+
+
 def ROUTES():
     return {
         ("GET", "/api/auth/state"): state,
         ("POST", "/api/auth/setup"): setup,
         ("POST", "/api/auth/login"): login,
+        ("GET", "/api/auth/tokens"): list_tokens,
+        ("POST", "/api/auth/tokens"): create_token,
+        ("DELETE", "/api/auth/tokens/<id>"): revoke_token,
         ("POST", "/api/auth/logout"): logout,
         ("POST", "/api/auth/password"): change,
     }
