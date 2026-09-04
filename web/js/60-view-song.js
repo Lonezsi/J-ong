@@ -48,13 +48,11 @@ J.views.song = {
     };
     J.songCtx = ctx;
 
-    root.innerHTML = `
-      <!-- The whole panel's ground, not just the header's. It is the song's own artwork,
-           enormous and far out of focus, sitting behind everything on the page and
-           moving slower than the content does. -->
-      <div class="song-wash ${cover ? "" : "flat"}" id="songWash"
-           style="${cover ? `background-image:url('${J.esc(cover)}')` : `--hue:${J.hue(song.title)}`}"></div>
+    // The song's artwork is the whole page's ground now, behind the rail and the player
+    // too, rather than stopping at the edge of this panel.
+    J.pageWash(cover, cover ? undefined : J.hue(song.title));
 
+    root.innerHTML = `
       <div class="hero">
         <div class="hero-art ${cover ? "" : "flat"}" id="heroArt"
              style="${cover ? `background-image:url('${J.esc(cover)}')` : `--hue:${J.hue(song.title)}`}"></div>
@@ -728,18 +726,31 @@ J.pickAlbums = async function (song) {
 
 /* ── artwork, as a strip rather than a screen ─────────────────────────────── */
 J.blockArtwork = async function (block, ctx) {
+  /* The strip is drawn in a fixed order of its own, oldest first, and never re-drawn to
+   * match the server's.
+   *
+   * The server decides the cover by position, so choosing one moves it to the front. If
+   * the tiles followed that, picking the third picture would shuffle all three under
+   * your finger and the one you just chose would appear somewhere else, which reads as
+   * having pressed the wrong thing. Sorting by id keeps every tile where it was; the
+   * only thing that moves is the mark saying which one is the cover. */
+  const shown = () => ctx.artwork.slice().sort((a, b) => a.id - b.id);
+  const coverId = () => (ctx.artwork.length ? ctx.artwork[0].id : null);
+
   block.innerHTML = `
     <div class="block-head"><h2>Artwork</h2></div>
     <div class="art-strip">
-      ${ctx.artwork.map((image, i) => `
-        <div class="art-tile ${i === 0 ? "is-cover" : ""}" data-image="${image.id}"
-             tabindex="0" role="button"
-             title="${i === 0 ? "The cover" : "Make this the cover"}">
-          <img src="/api/artwork/${image.id}/image" alt="" loading="lazy">
-          ${i === 0 ? '<span class="art-badge">Cover</span>' : ""}
+      ${shown().map((image) => `
+        <div class="art-tile ${image.id === coverId() ? "is-cover" : ""}"
+             data-image="${image.id}" tabindex="0" role="button"
+             title="${image.id === coverId() ? "The cover" : "Make this the cover"}">
+          <span class="art-frame">
+            <img src="/api/artwork/${image.id}/image" alt="" loading="lazy">
+            <span class="art-badge">Cover</span>
+          </span>
           <button class="art-drop" data-act="remove" aria-label="Remove this artwork"
                   title="Remove this artwork">
-            <svg viewBox="0 0 24 24" width="12" height="12"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 24 24" width="12" height="12"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg>
           </button>
         </div>`).join("")}
       <button class="art-add" data-act="add" aria-label="Add artwork">
@@ -762,10 +773,39 @@ J.blockArtwork = async function (block, ctx) {
   });
 
   async function makeCover(id) {
+    if (id === coverId()) return;
     const order = [id].concat(ctx.artwork.filter((i) => i.id !== id).map((i) => i.id));
-    await J.try(() => J.post(`/api/songs/${ctx.songId}/artwork/order`, { order }), "Cover set");
+    const before = ctx.artwork.slice();
+    // Moved here first so the mark lands under the finger straight away.
+    ctx.artwork = order.map((at) => before.find((i) => i.id === at)).filter(Boolean);
+    paintCover();
+
+    const ok = await J.try(() =>
+      J.post(`/api/songs/${ctx.songId}/artwork/order`, { order }), "Cover set");
+    if (!ok) { ctx.artwork = before; paintCover(); return; }
     J.emit("artwork:changed", { songId: ctx.songId });
-    J.router.reload();
+
+    /* Updated in place rather than by reloading the page.
+     *
+     * Reloading sent the view back to the top to show a change that is already visible
+     * behind everything, so choosing a cover threw away where you were reading. */
+    // Looked up from the document: this block is handed its own element, not the view,
+    // so the hero is somewhere else on the page rather than inside it.
+    const url = `/api/artwork/${id}/image`;
+    const art = J.$("#heroArt");
+    if (art) { art.style.backgroundImage = `url('${url}')`; art.classList.remove("flat"); }
+    const cover = J.$("#coverEdit .cover") || J.$(".cover-edit .cover");
+    if (cover) { cover.style.backgroundImage = `url('${url}')`; cover.classList.remove("flat"); }
+    J.pageWash(url);
+  }
+
+  function paintCover() {
+    const now = coverId();
+    J.$$(".art-tile", block).forEach((tile) => {
+      const mine = Number(tile.dataset.image) === now;
+      tile.classList.toggle("is-cover", mine);
+      tile.title = mine ? "The cover" : "Make this the cover";
+    });
   }
 
   async function removeArt(id) {

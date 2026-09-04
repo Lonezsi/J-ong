@@ -9,37 +9,10 @@
  * opens the list when you press it.
  */
 
-/* ── the ground under the whole song ──────────────────────────────────────
-
-   The song's own artwork, blown up and blurred to nothing, behind every part of the
-   page rather than only behind the header. It is fixed to the panel and does not
-   scroll, so reading down a long song moves the content across a still image instead
-   of dragging a picture along with it.
-
-   Faint on purpose. It has to sit under body text for the length of the page, so it is
-   a temperature rather than a picture: enough that the song feels like itself, not
-   enough to compete with a word. */
-.song-wash {
-  position: absolute; inset: 0;
-  z-index: 0;
-  background-size: cover;
-  background-position: center;
-  /* Pinned to the window rather than to the element, so reading down a long song moves
-     the content across a still image instead of dragging the picture along with it. */
-  background-attachment: fixed;
-  filter: blur(90px) saturate(160%);
-  opacity: 0.3;
-  transform: scale(1.35);
-  pointer-events: none;
-}
-.song-wash.flat {
-  background-image:
-    radial-gradient(80% 60% at 25% 10%, hsl(var(--hue) 45% 30%), transparent 70%),
-    radial-gradient(70% 60% at 85% 60%, hsl(calc(var(--hue) + 50) 40% 24%), transparent 65%);
-  filter: blur(70px);
-}
-/* Everything on the page sits above it. */
-.view > *:not(.song-wash) { position: relative; z-index: 1; }
+/* The song's ground now lives at the page level, in 20-shell.css, so the artwork runs
+   behind the rail and the player instead of stopping at this panel's edge. What is left
+   here is the stacking that put the page's content above it. */
+.view > * { position: relative; z-index: 1; }
 
 /* ── the header ───────────────────────────────────────────────────────────── */
 .hero {
@@ -542,31 +515,50 @@ textarea.card-edit {
 
 /* ── artwork strip ────────────────────────────────────────────────────────── */
 .art-strip { display: flex; gap: var(--s2); flex-wrap: wrap; }
+/* A tile is a frame with a corner control sitting on its edge, so the tile itself must
+   not clip: the clipping happens one level in, on the frame that holds the picture. */
 .art-tile {
   position: relative; width: 92px; height: 92px;
-  border-radius: var(--r-md); overflow: hidden; cursor: pointer;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.art-frame {
+  position: absolute; inset: 0;
+  display: block;
+  border-radius: var(--r-md);
+  overflow: hidden;
 }
 .art-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
-/* Removing sits in a corner, not across the bottom.
+
+/* Removing sits on the corner, not across the bottom.
  *
  * It used to be a bar the full width of the tile and about a third of its height,
  * invisible until the pointer was already over it, so clicking a picture to choose it
- * deleted it instead. The whole tile chooses now, and throwing one away is a small
- * target in one corner that says what it is, plus a right click, plus a confirmation.
- * Choosing happens forty times; deleting happens once and cannot be taken back. */
+ * deleted it instead. Choosing happens forty times; deleting happens once and cannot be
+ * taken back. */
 .art-tile .art-drop {
-  position: absolute; top: 4px; right: 4px;
+  position: absolute; top: -7px; right: -7px;
   width: 22px; height: 22px; padding: 0;
   display: grid; place-items: center;
-  border: 0; border-radius: 50%;
-  background: rgba(0, 0, 0, 0.65); color: var(--text-2);
-  opacity: 0; transform: scale(0.85);
+  border: 1px solid var(--line-2); border-radius: 50%;
+  background: var(--elevated); color: var(--text-2);
+  opacity: 0; transform: scale(0.8);
   transition: opacity var(--fast), transform var(--fast), background var(--fast),
-              color var(--fast);
+              color var(--fast), border-color var(--fast);
   cursor: pointer;
+  z-index: 2;
 }
 .art-tile:hover .art-drop, .art-tile:focus-within .art-drop { opacity: 1; transform: none; }
-.art-tile .art-drop:hover { background: var(--bad); color: var(--text-on-color); }
+.art-tile .art-drop:hover {
+  background: var(--bad); color: var(--text-on-color); border-color: var(--bad);
+}
+
+/* A finger cannot hover, so on a touch screen it is simply always there. Sitting off the
+   corner rather than over the picture is what keeps it out of the way of choosing. */
+@media (hover: none) {
+  .art-strip { padding: 8px 8px 0; margin: -8px -8px 0; }
+  .art-tile .art-drop { opacity: 1; transform: none; }
+}
 
 /* Which one is chosen, said in words rather than only by an outline. */
 .art-badge {
@@ -575,11 +567,17 @@ textarea.card-edit {
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
   background: var(--accent); color: var(--text-on-accent);
   pointer-events: none;
+  opacity: 0; transform: translateY(3px);
+  transition: opacity var(--fast), transform var(--fast);
+}
+.art-tile.is-cover .art-badge { opacity: 1; transform: none; }
+
+.art-tile.is-cover .art-frame { outline: 2px solid var(--accent); outline-offset: -2px; }
+.art-tile:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 3px; }
+.art-tile:not(.is-cover):hover .art-frame {
+  outline: 2px solid var(--line-2); outline-offset: -2px;
 }
 
-.art-tile.is-cover { outline: 2px solid var(--accent); outline-offset: -2px; }
-.art-tile:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
-.art-tile:not(.is-cover):hover { outline: 2px solid var(--line-2); outline-offset: -2px; }
 .art-add {
   width: 92px; height: 92px;
   border: 1.5px dashed var(--line-2);

@@ -305,3 +305,24 @@ J.sort = (function () {
     },
   };
 }());
+
+
+/* The page's ground.
+ *
+ * A song puts its own artwork behind the entire app rather than behind its panel, so
+ * the rail and the player have something with colour in it to bend. Called with nothing
+ * by every other view, which is how it goes away again.
+ */
+J.pageWash = function (url, hue) {
+  const wash = document.getElementById("pageWash");
+  if (!wash) return;
+  if (!url && hue === undefined) {
+    wash.classList.remove("on", "flat");
+    wash.style.backgroundImage = "";
+    return;
+  }
+  wash.classList.toggle("flat", !url);
+  if (url) wash.style.backgroundImage = `url('${String(url).replace(/'/g, "%27")}')`;
+  else { wash.style.backgroundImage = ""; wash.style.setProperty("--hue", hue); }
+  wash.classList.add("on");
+};

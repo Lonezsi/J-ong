@@ -590,3 +590,31 @@ def test_the_lyrics_deck_holds_its_gestures_on_something_that_survives_a_redraw(
     kept = re.findall(r"(?:const|let)\s+\w+\s*=\s*J\.\$\(\s*[\"']#deck(?:Window|Track)",
                       body.group(1))
     assert not kept, "the deck elements are resolved once and held across redraws"
+
+
+def test_no_view_block_reaches_for_a_variable_it_was_never_given():
+    """A block is handed its own element and a context, never the view root.
+
+    blockArtwork reached for `root`, which exists in the view's render function and not
+    in the block's. The ReferenceError landed inside an async click handler, so it did
+    not reach window.onerror and nothing was logged: choosing a cover saved on the
+    server and then silently stopped, leaving the header showing the old picture. The
+    only symptom was a page that looked like it had ignored you.
+    """
+    text = pathlib.Path(JS_DIR, "60-view-song.js").read_text(encoding="utf-8")
+
+    blocks = re.findall(r"^J\.(block\w+)\s*=\s*(?:async\s+)?function\s*\(([^)]*)\)",
+                        text, re.M)
+    assert blocks, "no view blocks found; this test is reading the wrong shape"
+
+    trouble = {}
+    for name, params in blocks:
+        given = {p.strip() for p in params.split(",") if p.strip()}
+        start = text.index("J.%s = " % name)
+        nxt = [text.index("J.%s = " % other) for other, _ in blocks
+               if other != name and text.index("J.%s = " % other) > start]
+        body = text[start:min(nxt) if nxt else len(text)]
+        # `root` is the view's, and a block is never handed it.
+        if "root" not in given and re.search(r"[^.\w]root\b", body):
+            trouble[name] = "reaches for root"
+    assert not trouble, "blocks using a name they were not given: %s" % trouble

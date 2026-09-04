@@ -88,6 +88,9 @@ J.router = (function () {
     // old one left every previous screen's listeners attached.
     root.className = old.className + (inPlace ? "" : " entering");
     const wasScrolled = old.scrollTop;
+    // The ground belongs to whichever view is arriving. Cleared here rather than by each
+    // view on the way out, because a view does not know it is leaving.
+    if (!inPlace) J.pageWash(null);
     if (inPlace) root.innerHTML = old.innerHTML;
     old.replaceWith(root);
     if (inPlace) root.scrollTop = wasScrolled;

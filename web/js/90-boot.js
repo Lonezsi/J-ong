@@ -222,31 +222,38 @@ async function boot() {
   //: How far across before it counts, in pixels.
   const SWIPE = 55;
 
-  /* With a mouse, the gesture has to start on genuinely empty space.
+  /* Empty means nothing here does anything when you press it.
    *
-   * A finger dragging across a list means the list, because a row has no sideways
-   * gesture of its own. A mouse dragging across a row means selecting the words in it,
-   * and stealing that would be worse than not having the gesture at all. So a pointer
-   * that is a mouse has to begin somewhere there is nothing: the page behind the
-   * content, the gap under a section, the margins. Everything with its own meaning is
-   * named here and left alone.
-   *
-   * This is why swiping did nothing on a laptop: mice were turned away at the door,
-   * which is right for a drag that starts on a song and wrong for one that starts on
-   * the empty half of the page. */
-  const HAS_ITS_OWN_MEANING = [
-    "a", "button", "input", "textarea", "select", "label",
-    "[role=button]", "[data-act]", "[data-link]", "[contenteditable]",
-    ".track", ".render-row", ".album-card", ".lyric-card", ".pick-row",
-    ".band-card", ".knob-row", ".block-head", ".section-head", ".hero",
-  ].join(", ");
+   * Not a list of class names, which was the first attempt and was wrong twice over: it
+   * named containers like the hero and the block heads, which cover most of a song page
+   * on a phone, and it could never keep up with markup that changes. The question that
+   * actually matters is whether the thing under the finger has a press of its own, and
+   * an element that does says so: it is a link or a control, it carries an action, or it
+   * is drawn with a pointer cursor. Anything else is background, and background is where
+   * this gesture lives.
+   */
+  const INTERACTIVE = "a, button, input, textarea, select, label, summary, [role=button],"
+    + " [data-act], [data-link], [data-image], [data-play], [data-preset], [data-slot],"
+    + " [data-go], [data-sort-list], [data-new-song], [data-new-album], [data-song],"
+    + " [data-render], [data-post], [data-item], [data-index], [data-album], [contenteditable]";
+
+  function hasAPressOfItsOwn(node) {
+    if (!node || !node.closest) return false;
+    if (node.closest(INTERACTIVE)) return true;
+    // The catch all: anything drawn as pressable is pressable, whatever it is called.
+    for (let at = node, depth = 0; at && at !== document.body && depth < 6; at = at.parentElement, depth++) {
+      if (at.nodeType !== 1) continue;
+      if (getComputedStyle(at).cursor === "pointer") return true;
+    }
+    return false;
+  }
 
   let swipe = null;
   document.addEventListener("pointerdown", (e) => {
     swipe = null;
     if (e.button) return;                                   // a right or middle press
     if (e.target.closest(KEEPS_ITS_GESTURES)) return;       // something else owns this
-    if (e.pointerType === "mouse" && e.target.closest(HAS_ITS_OWN_MEANING)) return;
+    if (hasAPressOfItsOwn(e.target)) return;                // it belongs to that instead
     swipe = { x: e.clientX, y: e.clientY, id: e.pointerId, done: false,
               mouse: e.pointerType === "mouse" };
   }, { passive: true });
