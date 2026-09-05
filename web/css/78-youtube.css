@@ -209,3 +209,6 @@
   .yt-card-head .preset-row { flex: 1 1 100%; }
   .yt-card { padding: var(--s4); }
 }
+
+/* When there is no arrangement to show. */
+.yt-nocomp { margin: 0; padding: var(--s4); font-size: 13px; max-width: 60ch; }

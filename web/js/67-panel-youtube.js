@@ -1,12 +1,8 @@
 /* Where this song lives on YouTube.
  *
- * J-ong does not push the file to YouTube itself, and it is worth saying why rather than
- * leaving a button that half works. Uploading through YouTube's API means a Google
- * account, an OAuth consent screen, a client secret kept on this machine and a library to
- * talk to it, which is a dependency, a credential and an approval flow for something you
- * do a handful of times a year. This does the part that is actually tedious instead: it
- * opens YouTube's upload page, hands you the exact render as a file ready to drop in, and
- * then keeps the link against the version that went up.
+ * The record, not the doing. Uploading has its own page, at #/song/<id>/youtube, where
+ * the file is rendered through this song's sound and its arrangement. This block is what
+ * is left behind afterwards: which link, against which version.
  *
  * Which version is the point. Six renders later, "what is actually online" is a real
  * question and the answer is not recoverable from anywhere else.
@@ -75,33 +71,6 @@ J.blockYouTube = async function (block, ctx) {
     return ctx.currentVersion();
   }
 
-  async function startUpload() {
-    const version = versionForUpload();
-    if (!version) {
-      J.toast("There is no render on this song to upload.");
-      return;
-    }
-
-    const go = await J.confirm(
-      `Upload v${version.n} of ${ctx.song.title}?`,
-      "YouTube's upload page opens in a new tab and the render downloads so you can drop "
-      + "it in. J-ong cannot post it for you: that needs a Google sign in it has no "
-      + "business holding. Paste the link back here when it is up.",
-      "Open YouTube");
-    if (!go) return;
-
-    // The file first, so it is already in the folder by the time the tab has loaded.
-    const link = document.createElement("a");
-    link.href = `/api/versions/${version.id}/audio`;
-    link.download = `${ctx.song.title} v${version.n}${version.ext || ".wav"}`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    window.open("https://www.youtube.com/upload", "_blank", "noopener");
-    await record(version);
-  }
-
   async function record(version) {
     const fields = await J.sheet({
       title: "Keep the link",
@@ -140,7 +109,8 @@ J.blockYouTube = async function (block, ctx) {
       block.innerHTML = `${head}
         <p class="faint yt-none">Nothing of this song is on YouTube yet, or nothing that
           J-ong has been told about. Upload renders the file through this song's sound and
-          sends it, and keeps the link against the version that went up.
+          its arrangement so you can save it and put it up, and keeps the link here against
+          the version that went up.
           <button class="linkish" data-act="record">Or paste a link you already have</button>.</p>`;
       return;
     }
@@ -176,7 +146,12 @@ J.blockYouTube = async function (block, ctx) {
     const row = act.closest("[data-post]");
     const post = row ? posts.find((p) => String(p.id) === row.dataset.post) : null;
 
-    if (act.dataset.act === "record") return record(versionForUpload());
+    if (act.dataset.act === "record") {
+      // A song with no render has no version to hang a link on, and record() reads one.
+      const version = versionForUpload();
+      if (!version) { J.toast("There is no render on this song yet."); return; }
+      return record(version);
+    }
     if (act.dataset.act === "copy" && post) return copy(post.url);
   });
 

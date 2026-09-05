@@ -359,3 +359,28 @@ def test_a_revoked_token_stops_working(secured):
                     headers=owner)
 
     assert secured.request("GET", "/api/state", headers=machine)[0] == 401,         "a revoked token still works"
+
+
+def test_an_upload_token_can_do_everything_the_client_actually_does(secured):
+    """The scope was written from memory and left out two routes the watcher calls on
+    every pass, so an agent carrying a token got a 401 on its first request and the watch
+    loop swallowed it. This walks the client's own source rather than a list somebody
+    typed, so the two cannot drift apart again."""
+    import os
+    import re
+
+    from jong.modules import auth
+
+    client = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "client", "jong_client.py")
+    source = open(client, encoding="utf-8").read()
+
+    wanted = set(re.findall(r'server\.(?:get|post|upload)\(\s*f?"(/api/[^"?]*)', source))
+    # Signing in is how a token is got in the first place, so it is not in scope.
+    wanted = {w for w in wanted if not w.startswith("/api/auth/")}
+    assert wanted, "the client calls nothing, so this test is reading the wrong shape"
+
+    allowed = {path for _method, path in auth.SCOPES["upload"]}
+    missing = sorted(w for w in wanted
+                     if w not in allowed and not any(w.startswith(a + "/") for a in allowed))
+    assert not missing, "the client calls these and an upload token cannot: %s" % missing

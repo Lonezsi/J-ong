@@ -45,12 +45,18 @@ SCHEMA = [
 #: laptop should not be able to. "upload" is every route the client actually calls;
 #: "full" exists for a token you deliberately make for something else.
 SCOPES = {
+    # Every route the client actually calls, checked against client/jong_client.py rather
+    # than assumed: the first version of this list left out /api/versions/have and
+    # /api/songs/match, which survey() calls on every pass, so a token carrying agent got
+    # a 401 on its first request and the watcher swallowed it.
     "upload": (
         ("GET", "/api/state"),
         ("GET", "/api/health"),
         ("POST", "/api/renders"),
         ("POST", "/api/renders/ingest"),
         ("GET", "/api/songs"),
+        ("GET", "/api/songs/match"),
+        ("GET", "/api/versions/have"),
         ("GET", "/api/sync/folders"),
     ),
     "full": None,          # None means no restriction

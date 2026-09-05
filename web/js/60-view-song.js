@@ -833,7 +833,10 @@ J.blockArtwork = async function (block, ctx) {
 
   block.addEventListener("keydown", (e) => {
     const tile = e.target.closest("[data-image]");
-    if (!tile || (e.key !== "Enter" && e.key !== " ")) return;
+    // Only when the tile itself has focus. The remove button sits inside it, and Enter
+    // on that used to make the picture the cover rather than removing it, which is the
+    // opposite of what the focused control says it does.
+    if (!tile || e.target !== tile || (e.key !== "Enter" && e.key !== " ")) return;
     e.preventDefault();
     makeCover(Number(tile.dataset.image));
   });

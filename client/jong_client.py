@@ -469,7 +469,10 @@ def cmd_login(cfg, server, args):
         print("Cannot reach %s: %s" % (cfg["server"], e.reason))
         return 1
 
-    name = args.name or ("%s" % os.environ.get("COMPUTERNAME") or "a machine")
+    # Not "%s" % os.environ.get(...): % binds tighter than or, so a missing
+    # COMPUTERNAME produced the string "None", which is truthy, and every machine
+    # without one was called None.
+    name = args.name or os.environ.get("COMPUTERNAME") or "a machine"
     made = json.dumps({"name": name, "scope": "upload"}).encode("utf-8")
     ask = urllib.request.Request(cfg["server"].rstrip("/") + "/api/auth/tokens",
                                  data=made, method="POST",

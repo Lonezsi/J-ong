@@ -642,3 +642,30 @@ def test_a_corrected_duration_is_only_written_for_the_file_that_was_decoded():
         "can write one version's duration onto another")
     assert body.index("currentSrc") < body.index("J.patch"), \
         "the check has to come before the write, or it is not a guard"
+
+
+def test_a_key_pressed_on_a_nested_control_does_that_controls_job():
+    """Rows that are themselves buttons and also contain buttons.
+
+    A delegated keydown using closest() matches the row even when focus is on something
+    inside it, so Enter on the Play button of a render row opened the "where does this
+    go" sheet, Enter on an artwork tile's remove button made that picture the cover, and
+    Enter on a song's title link played the song instead of opening its page. Every one
+    of them did the opposite of what the focused control said it did, and only from the
+    keyboard, which is why none was noticed.
+    """
+    rows = [
+        ("76-view-renders.js", "render-row"),
+        ("60-view-song.js", "data-image"),
+        ("50-view-library.js", "track"),
+    ]
+    for name, marker in rows:
+        text = pathlib.Path(JS_DIR, name).read_text(encoding="utf-8")
+        for match in re.finditer(r'addEventListener\("keydown"', text):
+            body = text[match.start():match.start() + 900]
+            if marker not in body or "Enter" not in body:
+                continue
+            guarded = ("e.target !== " in body) or ('e.target.closest("a, button")' in body)
+            assert guarded, (
+                "%s has a delegated Enter handler on %s with nothing stopping it firing "
+                "when focus is on a control inside the row" % (name, marker))

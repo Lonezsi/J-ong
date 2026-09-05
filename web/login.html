@@ -104,8 +104,7 @@ body { display: grid; place-items: center; min-height: 100dvh; padding: var(--s4
   <button class="btn primary" id="go" type="submit">Sign in</button>
 
   <p class="note" id="note">
-    Any password is accepted, however short. What protects it is that guessing is limited
-    to a few tries before this address has to wait.
+    Guessing is limited to a few tries before this address has to wait.
   </p>
 </form>
 
@@ -161,8 +160,13 @@ async function decideMode() {
   $("note").textContent = setup
     ? "Anything at all, as long as it is not empty. There are no rules about length or "
       + "characters, because guessing is rate limited instead."
-    : "Any password is accepted, however short. What protects it is that guessing is "
-      + "limited to a few tries before this address has to wait.";
+    /* Not "any password is accepted" on the sign in screen.
+     *
+     * It was written to mean "any password may be chosen", which is true and useful
+     * while setting one, and the setup branch above says exactly that. Read on a door,
+     * with a password field and a Sign in button under it, the same sentence says
+     * something else entirely: that anything typed will get you in. */
+    : "Guessing is limited to a few tries before this address has to wait.";
   (setup ? $("code") : $("password")).focus();
 }
 

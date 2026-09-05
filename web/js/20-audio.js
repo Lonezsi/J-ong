@@ -81,8 +81,6 @@ J.audio = (function () {
     entry.gain = audioCtx.createGain();
     entry.gain.gain.value = 0;
 
-    entry.limiter.knee.value = 0;
-    entry.limiter.ratio.value = 20;   // a compressor this steep is a limiter in all but name
     entry.limiter.attack.value = 0.003;
     entry.limiter.release.value = 0.12;
     entry.limiter.threshold.value = 0;
@@ -143,6 +141,15 @@ J.audio = (function () {
   function setLimiter(limiter, makeup, settings) {
     const lim = settings.limiter || {};
     const on = lim.on && !settings.bypass;
+    /* What makes this a limiter rather than a compressor, and it belongs here.
+     *
+     * These two used to be set in wire(), which only runs for a live deck, so the
+     * offline pass that writes a file built its compressor and left the browser's
+     * defaults on it: a 30 dB knee and 12:1 where the deck you listened through had 0
+     * and 20:1. The exported file was audibly not the mix that was approved, which is
+     * the one thing this whole shared chain exists to prevent. */
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
     limiter.threshold.value = on ? J.clamp(lim.threshold, -60, 0) : 0;
     limiter.release.value = on ? J.clamp((lim.release || 120) / 1000, 0.001, 1) : 0.25;
     limiter.attack.value = on ? J.clamp((lim.attack || 5) / 1000, 0, 0.1) : 0.003;

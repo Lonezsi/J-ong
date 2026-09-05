@@ -390,7 +390,10 @@ J.views.renders = {
     root.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
       const row = e.target.closest('.render-row[role="button"]');
-      if (!row) return;
+      // Only when the row itself has focus. It holds four buttons of its own, and
+      // pressing Enter on Play or on Throw away used to open the "where does this go"
+      // sheet instead of playing or throwing away.
+      if (!row || e.target !== row) return;
       e.preventDefault();
       row.click();
     });

@@ -71,7 +71,16 @@ J.wireTracks = function (root, songs) {
   root.addEventListener("keydown", (e) => {
     const row = e.target.closest(".track");
     if (!row) return;
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(row); return; }
+    // Not when the key was pressed on something inside the row that has its own job.
+    // The row holds two real links, the cover and the title, and Enter on either used to
+    // start the song playing instead of opening its page. The mouse path already guards
+    // this; the keyboard path did not.
+    if (e.key === "Enter" || e.key === " ") {
+      if (e.target.closest("a, button")) return;
+      e.preventDefault();
+      activate(row);
+      return;
+    }
     const all = rows();
     const at = all.indexOf(row);
     if (at < 0) return;
@@ -308,6 +317,8 @@ J.views.library = {
     }
 
     const heading = term ? `Results for “${J.esc(term)}”` : "Songs";
+    const inOrder = J.sort.apply(songs, "songs", SONG_SORTS);
+
     root.innerHTML = `
       ${!term && J.state.modules.includes("albums") ? `
         <div class="section">
@@ -338,12 +349,14 @@ J.views.library = {
           <div class="track-head eyebrow">
             <span></span><span>Title</span><span>Latest</span><span>Length</span>
           </div>
-          <div class="tracks">${J.sort.apply(songs, "songs", SONG_SORTS)
-            .map((s) => J.trackRow(s)).join("")}</div>`
+          <div class="tracks">${inOrder.map((s) => J.trackRow(s)).join("")}</div>`
           : `<div class="empty"><h3>No songs match that</h3><p>Try a shorter search.</p></div>`}
       </div>`;
 
-    wire(root, songs);
+    // The same array the rows were drawn from, so what plays next is the row underneath.
+    // Drawing from the sorted copy and handing the raw one to the queue meant pressing
+    // the third row played the third row and then went wherever the server's order said.
+    wire(root, inOrder);
     // Re-rendering the whole view keeps the row wiring and the sorted markup in step;
     // patching one list in place would leave wire()'s closure pointing at the old rows.
     J.sort.wire(root, "songs", SONG_SORTS, () => J.router.reload());

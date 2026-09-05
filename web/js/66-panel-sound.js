@@ -241,7 +241,7 @@ J.blockSound = async function (panel, ctx) {
         </div>
         <div class="freq">${J.eq.fmtHz(band.freq)}<span class="unit">Hz</span></div>
         <div class="band-bottom">
-          <span class="gain">${J.eq.FLAT.has(band.type) ? "&mdash;"
+          <span class="gain">${J.eq.FLAT.has(band.type) ? "no gain"
             : (band.gain > 0 ? "+" : "") + band.gain.toFixed(1) + " dB"}</span>
           <span class="q-knob" data-band="${band.id}" title="Drag for Q"
                 role="slider" tabindex="0" aria-label="Q"
@@ -281,7 +281,7 @@ J.blockSound = async function (panel, ctx) {
       if (freq) freq.innerHTML = `${J.eq.fmtHz(band.freq)}<span class="unit">Hz</span>`;
       const gain = J.$(".gain", card);
       if (gain) {
-        gain.innerHTML = J.eq.FLAT.has(band.type) ? "&mdash;"
+        gain.innerHTML = J.eq.FLAT.has(band.type) ? "no gain"
           : `${band.gain > 0 ? "+" : ""}${band.gain.toFixed(1)} dB`;
       }
       const knob = J.$(".q-knob", card);
@@ -394,7 +394,14 @@ J.blockSound = async function (panel, ctx) {
       <span>ceil <b>${Number(lim.ceiling).toFixed(1)}</b></span>
       <span>gr <b>${reduction.toFixed(1)}</b></span>`;
   }
-  setInterval(() => { if (panel.isConnected) showLimiterNumbers(); }, 140);
+  /* Stopped when the panel goes, not merely skipped.
+   *
+   * The isConnected check stopped the work and left the timer running, one more per song
+   * page opened, for the life of the tab. */
+  const ticking = setInterval(() => {
+    if (!panel.isConnected) { clearInterval(ticking); return; }
+    showLimiterNumbers();
+  }, 140);
 
   function refreshReadout() {
     const readout = J.$("#eqReadout", panel);

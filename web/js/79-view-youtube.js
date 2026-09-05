@@ -160,10 +160,30 @@ J.views.youtube = {
       paintChrome();
     }
 
+    let comp = null;
+
+    /* Only for a song that already has an arrangement.
+     *
+     * J.compositor.mount lays one out when it finds none, which means detecting the
+     * tempo, decoding the whole render and saving the result. On the song page that is
+     * what you asked for by opening the drawer. Here it would happen merely by visiting,
+     * and would write an arrangement onto a song that never had one. Opening a page to
+     * look at something must not change it.
+     *
+     * Its ticker is kept and stopped, too: mount() returns a stop() and starts a 60ms
+     * interval, and draw() runs again on every account pick and preset change. */
     function mountArrangement() {
+      if (comp && comp.stop) comp.stop();
+      comp = null;
       const node = J.$("#ytComp", root);
       if (!node || !J.compositor) return;
-      J.compositor.mount(node, ctx);
+      if (!J.arrange || J.arrange.state.songId !== songId || !J.arrange.state.clips.length) {
+        node.innerHTML = `<p class="faint yt-nocomp">This song has not been laid out yet.
+          Open it on the song page and press Arrange to cut it into sections; what you do
+          there shows up here.</p>`;
+        return;
+      }
+      comp = J.compositor.mount(node, ctx);
     }
 
     const savePreset = J.debounce((preset) => {
@@ -575,6 +595,7 @@ J.views.youtube = {
       if (!root.isConnected) {
         J.bus.removeEventListener("arrange:change", follow);
         freeAudition();
+        if (comp && comp.stop) comp.stop();
         return;
       }
       stale();
